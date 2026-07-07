@@ -31,8 +31,10 @@ module.exports = (sequelize,DataTypes) => {
       }
     },
     habilitado: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true,
+      type: DataTypes.INTEGER,
+      defaultValue: 1,
+      allowNull: false,
+      
     }
 },
     {

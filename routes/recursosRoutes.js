@@ -5,7 +5,7 @@ const { protect } =require('../middleware/authMiddleware.js');
 const router = Router();
 
 router.post('/', protect, createRecurso); 
-router.get('/', protect, getRecursos);
+router.get('/', getRecursos);
 router.put('/:id',updateRecurso);
 router.delete('/:id',deleteRecurso);
 

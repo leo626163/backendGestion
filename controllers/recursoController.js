@@ -1,7 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const { getModels } = require('../models/index.js');
 
-// ─── CREAR RECURSO ───────────────────────────────────────────────────────────
 const createRecurso = asyncHandler(async (req, res) => {
   console.log('📦 Body recibido:', req.body);
   const models = getModels();
@@ -42,36 +41,36 @@ const createRecurso = asyncHandler(async (req, res) => {
   });
 });
 
-// ─── OBTENER RECURSOS ────────────────────────────────────────────────────────
 const getRecursos = asyncHandler(async (req, res) => {
+  console.log('🔵 GET /recursos - Petición recibida');
+  console.log('🔵 Headers:', req.headers.authorization);
+  console.log('🔵 Query:', req.query);
+  
   const models = getModels();
   const { Recurso } = models;
   
-  // ✅ Permitir filtro opcional por habilitado
-  const { habilitado } = req.query;
-  const whereClause = {};
-  
-  if (habilitado !== undefined) {
-    whereClause.habilitado = habilitado === 'true' || habilitado === '1' ? 1 : 0;
+  try {
+    const recursos = await Recurso.findAll({
+      attributes: ['idrecurso', 'nombre_recurso', 'recurso_tipo', 'descripcion', 'habilitado', 'cantidad'],
+      order: [['nombre_recurso', 'ASC']],
+    });
+
+    console.log('✅ Recursos encontrados:', recursos.length);
+    
+    const formatted = recursos.map(r => ({
+      idrecurso: r.idrecurso,
+      nombre_recurso: r.nombre_recurso,
+      recurso_tipo: r.recurso_tipo,
+      descripcion: r.descripcion,
+      habilitado: r.habilitado,
+      cantidad: r.cantidad || 0,
+    }));
+
+    res.json(formatted);
+  } catch (error) {
+    console.error('❌ Error en getRecursos:', error);
+    throw error;
   }
-
-  const recursos = await Recurso.findAll({
-    where: whereClause, // ✅ Sin filtro fijo
-    attributes: ['idrecurso', 'nombre_recurso', 'recurso_tipo', 'descripcion', 'habilitado', 'cantidad'],
-    order: [['nombre_recurso', 'ASC']],
-  });
-
-  // ✅ Formatear respuesta: array directo + normalizar habilitado a número
-  const formatted = recursos.map(r => ({
-    idrecurso: r.idrecurso,
-    nombre_recurso: r.nombre_recurso,
-    recurso_tipo: r.recurso_tipo,
-    descripcion: r.descripcion,
-    habilitado: r.habilitado === true || r.habilitado === 't' ? 1 : 0, // ✅ Normalizar
-    cantidad: r.cantidad || 0,
-  }));
-
-  res.json(formatted); // ✅ Devolver array directo, no { recursos: [...] }
 });
 
 // ─── ACTUALIZAR RECURSO ──────────────────────────────────────────────────────
