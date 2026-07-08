@@ -24,14 +24,13 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         } 
       }),
       Evento.count(),
-      Evento.findAll({
-        attributes: [
-          'estado',
-          [sequelize.fn('COUNT', sequelize.col('idevento')), 'total']
-        ],
-        group: ['estado'],
-        raw: true
-      }),
+      sequelize.query(`
+        SELECT e.estado, COUNT(*) as total
+        FROM evento e
+        INNER JOIN academico a ON e.idacademico = a.idacademico
+        INNER JOIN facultad f ON a.facultad_id = f.facultad_id
+        GROUP BY e.estado
+`, { type: sequelize.QueryTypes.SELECT }),
       sequelize.query(
         `SELECT COUNT(*) as total FROM usuario WHERE "created_at" >= :inicioMes`,
         { 
