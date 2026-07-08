@@ -1,17 +1,18 @@
-// routes/notificacionesRoutes.js
-const { Router } =require ('express');
+const express = require('express');
+const router = express.Router();
 const {
   getUserNotifications,
-  read,
-  getUnreadCount,
-  sendNotification,
-} = require('../controllers/notificationController.js');
-const {protect} =require('../middleware/authMiddleware.js'); 
+  markAsRead,
+  markAllAsRead,
+  getUnreadCount
+} = require('../controllers/notificationController');
 
-const router = Router();
+const { protect } = require('../middleware/authMiddleware');
 
+// Rutas
 router.get('/', protect, getUserNotifications);
-router.patch('/:id/read', protect, read);
+router.patch('/:id/read', protect, markAsRead);
+router.patch('/mark-all-read', protect, markAllAsRead);
 router.get('/unread-count', protect, getUnreadCount);
 
 module.exports = router;
