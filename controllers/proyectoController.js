@@ -906,7 +906,16 @@ const deleteEvento = asyncHandler(async (req, res) => {
 
   const t = await sequelize.transaction();
   try {
-    const evento = await Evento.findByPk(id, { transaction: t });
+    const evento = await Evento.findByPk(id, {
+      include: [
+        { 
+          model: models.Academico, 
+          as: 'creador',
+          attributes: ['idacademico', 'nombre', 'apellidopat']
+        }
+      ],
+      transaction: t
+    });
     if (!evento) {
       await t.rollback();
       return res.status(404).json({ message: 'Evento no encontrado' });
@@ -928,6 +937,23 @@ const deleteEvento = asyncHandler(async (req, res) => {
 
     await t.commit();
     console.log(`✅ Evento ${id} rechazado`);
+    if (evento.idacademico) {
+      try {
+        const mensaje = razon_rechazo 
+          ? `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razon_rechazo}`
+          : `Tu evento "${evento.nombreevento}" fue rechazado`;
+        
+        await sendNotification({
+          idusuario: evento.idacademico,
+          titulo: '❌ Evento Rechazado',
+          mensaje: mensaje,
+          tipo: 'evento_rechazado'
+        });
+        console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+      } catch (notifError) {
+        console.warn(`⚠️ No se pudo enviar notificación de rechazo:`, notifError.message);
+      }
+    }
 
     res.status(200).json({
       message: 'Evento rechazado correctamente',
@@ -969,6 +995,20 @@ const aprobarEvento = async (req, res) => {
     await evento.update({ 
       estado: 'aprobado', fecha_aprobacion: new Date()});
 
+       if (evento.idacademico) {
+      try {
+        await sendNotification({
+          idusuario: evento.idacademico,
+          titulo: '✅ Evento Aprobado',
+          mensaje: `Tu evento "${evento.nombreevento}" ha sido aprobado exitosamente`,
+          tipo: 'evento_aprobado'
+        });
+        console.log(`✅ Notificación de aprobación enviada al académico ${evento.idacademico}`);
+      } catch (notifError) {
+        console.warn(`⚠️ No se pudo enviar notificación de aprobación:`, notifError.message);
+      }
+    }
+
      const eventoParaNotificar = {
       nombreevento: evento.nombreevento,
       fechaevento: evento.fechaevento,
@@ -996,16 +1036,42 @@ const rechazarEvento = async (req, res) => {
     const { Evento } = models;
 
 
-    const evento = await Evento.findByPk(id);
+    const evento = await Evento.findByPk(id, {
+      include: [
+        { 
+          model: models.Academico, 
+          as: 'creador',
+          attributes: ['idacademico', 'nombre', 'apellidopat']
+        }
+      ]
+    });
     if (!evento) {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
+      const razonRechazo = req.body.razon_rechazo || null;
     await evento.update({
       estado: 'rechazado', 
       fecha_rechazo: new Date(),
-      razon_rechazo: req.body.razon_rechazo || null
+      razon_rechazo: razonRechazo
      });
+       if (evento.idacademico) {
+      try {
+        const mensaje = razonRechazo 
+          ? `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razonRechazo}`
+          : `Tu evento "${evento.nombreevento}" fue rechazado`;
+        
+        await sendNotification({
+          idusuario: evento.idacademico,
+          titulo: '❌ Evento Rechazado',
+          mensaje: mensaje,
+          tipo: 'evento_rechazado'
+        });
+        console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+      } catch (notifError) {
+        console.warn(`⚠️ No se pudo enviar notificación de rechazo:`, notifError.message);
+      }
+    }
      const eventoParaNotificar = {
       nombreevento: evento.nombreevento,
       fechaevento: evento.fechaevento,
