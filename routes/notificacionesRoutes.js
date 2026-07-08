@@ -5,7 +5,6 @@ const {
   markAsRead,
   markAllAsRead,
   getUnreadCount,
-  read,
   diagnosticarNotificaciones
 } = require('../controllers/notificationController');
 

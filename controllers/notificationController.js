@@ -203,11 +203,38 @@ const getUnreadCount = asyncHandler(async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+const diagnosticarNotificaciones = asyncHandler(async (req, res) => {
+  try {
+    const { getModels } = require('../models/index.js');
+    const models = getModels();
+    const sequelize = models.sequelize;
+    
+    // Verificar estructura de la tabla
+    const columnas = await sequelize.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'notificacion'
+    `);
+    
+    const count = await sequelize.query(`
+      SELECT COUNT(*) as total FROM notificacion
+    `);
+    
+    res.json({
+      status: 'ok',
+      columnas: columnas[0],
+      totalNotificaciones: count[0][0].total
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 module.exports = {
   sendNotification,        
   getUserNotifications,
   markAsRead,
   markAllAsRead,
-  getUnreadCount
+  getUnreadCount,
+  diagnosticarNotificaciones
 };
