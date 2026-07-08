@@ -53,14 +53,11 @@ const getUserNotifications = asyncHandler(async (req, res) => {
     return res.status(401).json({ error: 'Usuario no autenticado' });
   }
 
-  // Fecha actual para filtrar eventos pasados
-  const now = new Date();
-  const today = new Date(now.setHours(0, 0, 0, 0));
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
   try {
-    // Obtener todas las notificaciones del usuario de los últimos 30 días
+    // Obtener todas las notificaciones de los últimos 30 días
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const notificaciones = await Notificacion.findAll({
       where: {
         idusuario: userId,
@@ -69,53 +66,60 @@ const getUserNotifications = asyncHandler(async (req, res) => {
         }
       },
       order: [['created_at', 'DESC']],
-      attributes: ['idnotificacion', 'titulo', 'mensaje', 'tipo', 'estado', 'id_relacionado', 'created_at'],
       raw: true
     });
 
-    // Si hay notificaciones con id_relacionado, verificar si los eventos son futuros
-    const notificacionesFiltradas = await Promise.all(
+    // Para cada notificación, verificar si el evento relacionado es futuro
+    const notificacionesConInfo = await Promise.all(
       notificaciones.map(async (notif) => {
-        // Si no tiene evento relacionado, incluir la notificación
-        if (!notif.id_relacionado) {
-          return { ...notif, evento_futuro: true };
+        const resultado = {
+          idnotificacion: notif.idnotificacion,
+          titulo: notif.titulo,
+          mensaje: notif.mensaje,
+          tipo: notif.tipo,
+          estado: notif.estado,
+          id_relacionado: notif.id_relacionado,
+          created_at: notif.created_at,
+          evento_pasado: false,
+          fecha_evento: null
+        };
+
+        // Si tiene evento relacionado, verificar la fecha
+        if (notif.id_relacionado) {
+          try {
+            const evento = await Evento.findOne({
+              where: { idevento: notif.id_relacionado },
+              attributes: ['fechaevento'],
+              raw: true
+            });
+
+            if (evento && evento.fechaevento) {
+              const fechaEvento = new Date(evento.fechaevento);
+              const hoy = new Date();
+              hoy.setHours(0, 0, 0, 0);
+              
+              // Marcar si el evento ya pasó
+              resultado.evento_pasado = fechaEvento < hoy;
+              resultado.fecha_evento = evento.fechaevento;
+            }
+          } catch (e) {
+            console.warn(`No se pudo verificar evento ${notif.id_relacionado}:`, e.message);
+          }
         }
 
-        // Buscar el evento relacionado
-        const evento = await Evento.findOne({
-          where: { idevento: notif.id_relacionado },
-          attributes: ['idevento', 'fechaevento', 'nombreevento'],
-          raw: true
-        });
-
-        // Si el evento no existe o es pasado, excluir la notificación
-        if (!evento) {
-          return null;
-        }
-
-        const fechaEvento = new Date(evento.fechaevento);
-        const esFuturo = fechaEvento >= today;
-
-        if (esFuturo) {
-          return {
-            ...notif,
-            evento_futuro: true,
-            fecha_evento: evento.fechaevento,
-            nombre_evento: evento.nombreevento
-          };
-        }
-
-        return null;
+        return resultado;
       })
     );
 
-    // Filtrar las notificaciones nulas (eventos pasados)
-    const notificacionesFinales = notificacionesFiltradas.filter(n => n !== null);
+    // FILTRAR: Solo devolver notificaciones de eventos futuros o sin evento
+    const notificacionesFiltradas = notificacionesConInfo.filter(n => !n.evento_pasado);
 
-    res.json(notificacionesFinales);
+    console.log(`✅ Notificaciones: ${notificaciones.length} totales, ${notificacionesFiltradas.length} después de filtrar eventos pasados`);
+
+    res.json(notificacionesFiltradas);
   } catch (error) {
-    console.error('Error al cargar notificaciones:', error);
-    res.status(500).json({ error: 'Error al cargar notificaciones' });
+    console.error('❌ Error al cargar notificaciones:', error);
+    res.status(500).json({ error: 'Error al cargar notificaciones', details: error.message });
   }
 });
 
