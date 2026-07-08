@@ -59,6 +59,8 @@ const createEvento = async (req, res) => {
       idsubcategoria: data.idsubcategoria || null,
        evento_externo: data.evento_externo === true || data.evento_externo === 'true',
       estado: 'pendiente',
+      created_at: new Date(),
+      updated_at: new Date(),
       
     }, { transaction: t });
 
