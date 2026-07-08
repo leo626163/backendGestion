@@ -42,19 +42,19 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         }
       ),
       sequelize.query(`
-         SELECT 
+        SELECT 
           f.nombre_facultad as facultad,
-          COUNT(*) FILTER (WHERE e.estado = 'aprobado') as aprobados,
-          COUNT(*) FILTER (WHERE e.estado = 'pendiente') as pendientes,
-          COUNT(*) FILTER (WHERE e.estado = 'rechazado') as rechazados,
+          COUNT(e.idevento) FILTER (WHERE e.estado = 'aprobado') as aprobados,
+          COUNT(e.idevento) FILTER (WHERE e.estado = 'pendiente') as pendientes,
+          COUNT(e.idevento) FILTER (WHERE e.estado = 'rechazado') as rechazados,
           COUNT(e.idevento) as total
         FROM facultad f
         LEFT JOIN academico a ON f.facultad_id = a.facultad_id
         LEFT JOIN evento e ON a.idacademico = e.idacademico
         GROUP BY f.nombre_facultad 
-        ORDER BY total DESC
+        ORDER BY aprobados DESC  -- ✅ Esto ordena por eventos APROBADOS
         LIMIT 10
-      `, { type: sequelize.QueryTypes.SELECT }),
+`, { type: sequelize.QueryTypes.SELECT }),
       sequelize.query(`
         SELECT DATE("fecha_aprobacion") as fecha, COUNT(*) as total
         FROM "evento"
