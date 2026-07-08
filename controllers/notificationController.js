@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const { getModels } = require('../models/index.js'); 
 const { Op } = require('sequelize');
 
-const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_evento', estado = 'pendiente', id_relacionado = null }) => {
+const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_evento', estado = 'pendiente' }) => {
   try {
     if (Array.isArray(idusuario)) {
       for (const id of idusuario) {
@@ -19,9 +19,10 @@ const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_even
     const models = getModels();
     const sequelize = models.sequelize;
     
+    // INSERT sin id_relacionado
     await sequelize.query(
-      `INSERT INTO notificacion (idusuario, titulo, mensaje, tipo, estado, id_relacionado, created_at, updated_at) 
-       VALUES (:idusuario, :titulo, :mensaje, :tipo, :estado, :id_relacionado, :created_at, :updated_at)`,
+      `INSERT INTO notificacion (idusuario, titulo, mensaje, tipo, estado, created_at, updated_at) 
+       VALUES (:idusuario, :titulo, :mensaje, :tipo, :estado, :created_at, :updated_at)`,
       {
         replacements: {
           idusuario,
@@ -29,9 +30,8 @@ const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_even
           mensaje,
           tipo,
           estado,
-          id_relacionado,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         },
         type: sequelize.QueryTypes.INSERT
       }
@@ -47,18 +47,8 @@ const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_even
 const getUserNotifications = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    
-    // Verificar que el modelo existe
-    if (!models.Notificacion) {
-      console.error('❌ Modelo Notificacion no existe');
-      console.log('Modelos disponibles:', Object.keys(models));
-      return res.status(500).json({ 
-        error: 'Modelo Notificacion no encontrado',
-        modelosDisponibles: Object.keys(models)
-      });
-    }
-    
-    const { Notificacion, Evento } = models;
+    const sequelize = models.sequelize;
+
     const userId = req.user?.idusuario || req.user?.id;
     
     if (!userId) {
@@ -68,236 +58,150 @@ const getUserNotifications = asyncHandler(async (req, res) => {
 
     console.log('🔍 Buscando notificaciones para usuario ID:', userId);
 
-    // PRIMERO: Consulta MUY SIMPLE sin filtros de fecha
-    let notificaciones;
-    try {
-      notificaciones = await Notificacion.findAll({
-        where: { idusuario: userId },
-        order: [['created_at', 'DESC']],
-        limit: 50,
-        raw: true
-      });
-      console.log(`✅ Consulta simple: ${notificaciones.length} notificaciones encontradas`);
-    } catch (dbError) {
-      console.error('❌ Error en consulta simple:', dbError.message);
-      console.error('SQL:', dbError.sql);
-      
-      // Si falla, intentar sin order
-      try {
-        notificaciones = await Notificacion.findAll({
-          where: { idusuario: userId },
-          limit: 50,
-          raw: true
-        });
-        console.log(`✅ Consulta sin order: ${notificaciones.length} notificaciones`);
-      } catch (dbError2) {
-        console.error('❌ Error en consulta sin order:', dbError2.message);
-        return res.status(500).json({ 
-          error: 'Error en base de datos',
-          details: dbError2.message,
-          sql: dbError2.sql
-        });
+    // Consulta SQL directa con las columnas REALES de tu tabla
+    const notificaciones = await sequelize.query(
+      `SELECT 
+        idnotificacion,
+        idusuario,
+        titulo,
+        mensaje,
+        tipo,
+        estado,
+        created_at,
+        updated_at
+       FROM notificacion
+       WHERE idusuario = :userId
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      {
+        replacements: { userId },
+        type: sequelize.QueryTypes.SELECT
       }
-    }
-
-    // Si no hay notificaciones, devolver array vacío
-    if (!notificaciones || notificaciones.length === 0) {
-      return res.json([]);
-    }
-
-    // Verificar que Evento existe antes de usarlo
-    if (!Evento) {
-      console.warn('⚠️ Modelo Evento no existe, devolviendo notificaciones sin enriquecer');
-      return res.json(notificaciones);
-    }
-
-    // Enriquecer con info de eventos
-    const notificacionesConInfo = await Promise.all(
-      notificaciones.map(async (notif) => {
-        const notifData = { ...notif, evento_pasado: false };
-        
-        if (notif.id_relacionado) {
-          try {
-            const evento = await Evento.findOne({
-              where: { idevento: notif.id_relacionado },
-              raw: true
-            });
-
-            if (evento) {
-              // Buscar la columna de fecha (puede tener diferentes nombres)
-              const fechaEvento = evento.fechaevento || evento.fecha_evento || evento.fecha;
-              
-              if (fechaEvento) {
-                const fecha = new Date(fechaEvento);
-                const hoy = new Date();
-                hoy.setHours(0, 0, 0, 0);
-                
-                notifData.evento_pasado = fecha < hoy;
-                notifData.fecha_evento = fechaEvento;
-                notifData.nombre_evento = evento.nombreevento || evento.nombre_evento || evento.nombre;
-              }
-            }
-          } catch (e) {
-            console.warn(`No se pudo cargar evento ${notif.id_relacionado}:`, e.message);
-          }
-        }
-
-        return notifData;
-      })
     );
 
-    // Filtrar solo eventos futuros o sin evento
-    const notificacionesFiltradas = notificacionesConInfo.filter(n => !n.evento_pasado);
+    console.log(`✅ Encontradas ${notificaciones.length} notificaciones`);
 
-    console.log(`📬 Total: ${notificaciones.length}, Filtradas: ${notificacionesFiltradas.length}`);
+    // Formatear para el frontend
+    const notificacionesFormateadas = notificaciones.map(n => ({
+      idnotificacion: n.idnotificacion,
+      id: n.idnotificacion, // Alias para compatibilidad con el frontend
+      titulo: n.titulo,
+      mensaje: n.mensaje,
+      tipo: n.tipo,
+      estado: n.estado,
+      read: n.estado === 'leido',
+      created_at: n.created_at,
+      // Como no hay id_relacionado, no podemos filtrar por fecha de evento
+      evento_pasado: false
+    }));
 
-    res.json(notificacionesFiltradas);
+    res.json(notificacionesFormateadas);
 
   } catch (error) {
     console.error('❌ ERROR en getUserNotifications:', error.message);
     console.error('Stack:', error.stack);
     res.status(500).json({ 
       error: 'Error interno del servidor',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
   }
 });
 
-// Ruta de diagnóstico
-const diagnosticarNotificaciones = asyncHandler(async (req, res) => {
+const markAsRead = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    
-    const resultado = {
-      modelosDisponibles: Object.keys(models),
-      notificacionExiste: !!models.Notificacion,
-      eventoExiste: !!models.Evento,
-    };
+    const sequelize = models.sequelize;
 
-    if (models.Notificacion) {
-      // Obtener estructura de la tabla
-      const sequelize = models.sequelize;
-      const [results] = await sequelize.query(`
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'notificacion'
-      `);
-      resultado.columnasNotificacion = results;
-      
-      // Contar notificaciones
-      const count = await models.Notificacion.count();
-      resultado.totalNotificaciones = count;
+    const notificationId = req.params.id;
+    const userId = req.user?.idusuario || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    if (models.Evento) {
-      const sequelize = models.sequelize;
-      const [results] = await sequelize.query(`
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'evento'
-      `);
-      resultado.columnasEvento = results;
+    const [updated] = await sequelize.query(
+      `UPDATE notificacion 
+       SET estado = 'leido', updated_at = :now
+       WHERE idnotificacion = :id AND idusuario = :userId`,
+      {
+        replacements: { 
+          id: notificationId, 
+          userId, 
+          now: new Date().toISOString() 
+        },
+        type: sequelize.QueryTypes.UPDATE
+      }
+    );
+
+    if (updated === 0) {
+      return res.status(404).json({ error: 'Notificación no encontrada' });
     }
 
-    res.json(resultado);
+    res.json({ success: true, message: 'Notificación marcada como leída' });
   } catch (error) {
+    console.error('❌ Error en markAsRead:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-const read = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { Notificacion } = models;
-
-  const { id } = req.params;
-  const userId = req.user?.idusuario || req.user?.id;
-  
-  if (!userId) return res.status(401).json({ message: 'Usuario no autenticado' });
-
-  const [updated] = await Notificacion.update(
-    { estado: 'leido', updated_at: new Date() },
-    { where: { idnotificacion: id, idusuario: userId } }
-  );
-
-  if (updated === 0) return res.status(404).json({ message: 'Notificación no encontrada' });
-
-  res.json({ success: true, message: 'Notificación marcada como leída' });
-});
-
-const markAsRead = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { Notificacion } = models;
-
-  const notificationId = req.params.id;
-  const userId = req.user?.idusuario || req.user?.id;
-
-  if (!userId) {
-    return res.status(401).json({ message: 'Usuario no autenticado' });
-  }
-
-  const [updated] = await Notificacion.update(
-    { estado: 'leido', updated_at: new Date() },
-    {
-      where: {
-        idnotificacion: notificationId,
-        idusuario: userId
-      }
-    }
-  );
-
-  if (updated === 0) {
-    return res.status(404).json({ error: 'Notificación no encontrada' });
-  }
-
-  res.json({ success: true, message: 'Notificación marcada como leída' });
-});
-
 const markAllAsRead = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { Notificacion } = models;
+  try {
+    const models = getModels();
+    const sequelize = models.sequelize;
 
-  const userId = req.user?.idusuario || req.user?.id;
+    const userId = req.user?.idusuario || req.user?.id;
 
-  if (!userId) {
-    return res.status(401).json({ message: 'Usuario no autenticado' });
-  }
-
-  const [updated] = await Notificacion.update(
-    { estado: 'leido', updated_at: new Date() },
-    {
-      where: {
-        idusuario: userId,
-        estado: { [Op.ne]: 'leido' }
-      }
+    if (!userId) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
     }
-  );
 
-  res.json({ 
-    success: true, 
-    message: 'Todas las notificaciones marcadas como leídas',
-    updated_count: updated 
-  });
+    const [updated] = await sequelize.query(
+      `UPDATE notificacion 
+       SET estado = 'leido', updated_at = :now
+       WHERE idusuario = :userId AND estado != 'leido'`,
+      {
+        replacements: { userId, now: new Date().toISOString() },
+        type: sequelize.QueryTypes.UPDATE
+      }
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Todas las notificaciones marcadas como leídas',
+      updated_count: updated 
+    });
+  } catch (error) {
+    console.error('❌ Error en markAllAsRead:', error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 const getUnreadCount = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { Notificacion } = models;
+  try {
+    const models = getModels();
+    const sequelize = models.sequelize;
 
-  const userId = req.user?.idusuario || req.user?.id;
+    const userId = req.user?.idusuario || req.user?.id;
 
-  if (!userId) {
-    return res.status(401).json({ message: 'Usuario no autenticado' });
-  }
-
-  const count = await Notificacion.count({
-    where: {
-      idusuario: userId,
-      estado: { [Op.ne]: 'leido' } 
+    if (!userId) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
     }
-  });
 
-  res.json({ unread_count: count });
+    const result = await sequelize.query(
+      `SELECT COUNT(*) as count 
+       FROM notificacion
+       WHERE idusuario = :userId AND estado != 'leido'`,
+      {
+        replacements: { userId },
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    res.json({ unread_count: parseInt(result[0].count) });
+  } catch (error) {
+    console.error('❌ Error en getUnreadCount:', error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 module.exports = {
@@ -305,7 +209,5 @@ module.exports = {
   getUserNotifications,
   markAsRead,
   markAllAsRead,
-  getUnreadCount,
-  read,
-  diagnosticarNotificaciones
+  getUnreadCount
 };
