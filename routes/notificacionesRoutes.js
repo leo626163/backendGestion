@@ -4,12 +4,17 @@ const {
   getUserNotifications,
   markAsRead,
   markAllAsRead,
-  getUnreadCount
+  getUnreadCount,
+  read,
+  diagnosticarNotificaciones
 } = require('../controllers/notificationController');
 
 const { protect } = require('../middleware/authMiddleware');
 
-// Rutas
+// Ruta de diagnóstico (SIN autenticación para probar)
+router.get('/diagnostico', diagnosticarNotificaciones);
+
+// Rutas protegidas
 router.get('/', protect, getUserNotifications);
 router.patch('/:id/read', protect, markAsRead);
 router.patch('/mark-all-read', protect, markAllAsRead);

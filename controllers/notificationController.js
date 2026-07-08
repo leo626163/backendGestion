@@ -47,8 +47,18 @@ const sendNotification = async ({ idusuario, titulo, mensaje, tipo = 'nuevo_even
 const getUserNotifications = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    const { Notificacion } = models;
-
+    
+    // Verificar que el modelo existe
+    if (!models.Notificacion) {
+      console.error('❌ Modelo Notificacion no existe');
+      console.log('Modelos disponibles:', Object.keys(models));
+      return res.status(500).json({ 
+        error: 'Modelo Notificacion no encontrado',
+        modelosDisponibles: Object.keys(models)
+      });
+    }
+    
+    const { Notificacion, Evento } = models;
     const userId = req.user?.idusuario || req.user?.id;
     
     if (!userId) {
@@ -58,54 +68,78 @@ const getUserNotifications = asyncHandler(async (req, res) => {
 
     console.log('🔍 Buscando notificaciones para usuario ID:', userId);
 
-    // Fecha de hace 30 días
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // PRIMERO: Consulta MUY SIMPLE sin filtros de fecha
+    let notificaciones;
+    try {
+      notificaciones = await Notificacion.findAll({
+        where: { idusuario: userId },
+        order: [['created_at', 'DESC']],
+        limit: 50,
+        raw: true
+      });
+      console.log(`✅ Consulta simple: ${notificaciones.length} notificaciones encontradas`);
+    } catch (dbError) {
+      console.error('❌ Error en consulta simple:', dbError.message);
+      console.error('SQL:', dbError.sql);
+      
+      // Si falla, intentar sin order
+      try {
+        notificaciones = await Notificacion.findAll({
+          where: { idusuario: userId },
+          limit: 50,
+          raw: true
+        });
+        console.log(`✅ Consulta sin order: ${notificaciones.length} notificaciones`);
+      } catch (dbError2) {
+        console.error('❌ Error en consulta sin order:', dbError2.message);
+        return res.status(500).json({ 
+          error: 'Error en base de datos',
+          details: dbError2.message,
+          sql: dbError2.sql
+        });
+      }
+    }
 
-    // Consulta SIMPLE primero para verificar que funciona
-    const notificaciones = await Notificacion.findAll({
-      where: {
-        idusuario: userId,
-        created_at: {
-          [Op.gte]: thirtyDaysAgo
-        }
-      },
-      order: [['created_at', 'DESC']],
-      limit: 50 // Limitar resultados
-    });
+    // Si no hay notificaciones, devolver array vacío
+    if (!notificaciones || notificaciones.length === 0) {
+      return res.json([]);
+    }
 
-    console.log(`✅ Encontradas ${notificaciones.length} notificaciones`);
+    // Verificar que Evento existe antes de usarlo
+    if (!Evento) {
+      console.warn('⚠️ Modelo Evento no existe, devolviendo notificaciones sin enriquecer');
+      return res.json(notificaciones);
+    }
 
-    // Si hay notificaciones, enriquecer con info de eventos
+    // Enriquecer con info de eventos
     const notificacionesConInfo = await Promise.all(
       notificaciones.map(async (notif) => {
-        const notifData = notif.toJSON();
+        const notifData = { ...notif, evento_pasado: false };
         
-        // Si tiene evento relacionado, obtener su fecha
-        if (notifData.id_relacionado) {
+        if (notif.id_relacionado) {
           try {
-            const { Evento } = models;
             const evento = await Evento.findOne({
-              where: { idevento: notifData.id_relacionado },
-              attributes: ['fechaevento', 'nombreevento'],
+              where: { idevento: notif.id_relacionado },
               raw: true
             });
 
-            if (evento && evento.fechaevento) {
-              const fechaEvento = new Date(evento.fechaevento);
-              const hoy = new Date();
-              hoy.setHours(0, 0, 0, 0);
+            if (evento) {
+              // Buscar la columna de fecha (puede tener diferentes nombres)
+              const fechaEvento = evento.fechaevento || evento.fecha_evento || evento.fecha;
               
-              notifData.evento_pasado = fechaEvento < hoy;
-              notifData.fecha_evento = evento.fechaevento;
-              notifData.nombre_evento = evento.nombreevento;
+              if (fechaEvento) {
+                const fecha = new Date(fechaEvento);
+                const hoy = new Date();
+                hoy.setHours(0, 0, 0, 0);
+                
+                notifData.evento_pasado = fecha < hoy;
+                notifData.fecha_evento = fechaEvento;
+                notifData.nombre_evento = evento.nombreevento || evento.nombre_evento || evento.nombre;
+              }
             }
           } catch (e) {
-            console.warn(`No se pudo cargar evento ${notifData.id_relacionado}:`, e.message);
-            notifData.evento_pasado = false;
+            console.warn(`No se pudo cargar evento ${notif.id_relacionado}:`, e.message);
           }
-        } else {
-          notifData.evento_pasado = false;
         }
 
         return notifData;
@@ -121,11 +155,54 @@ const getUserNotifications = asyncHandler(async (req, res) => {
 
   } catch (error) {
     console.error('❌ ERROR en getUserNotifications:', error.message);
-    console.error('Stack trace:', error.stack);
+    console.error('Stack:', error.stack);
     res.status(500).json({ 
       error: 'Error interno del servidor',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  }
+});
+
+// Ruta de diagnóstico
+const diagnosticarNotificaciones = asyncHandler(async (req, res) => {
+  try {
+    const models = getModels();
+    
+    const resultado = {
+      modelosDisponibles: Object.keys(models),
+      notificacionExiste: !!models.Notificacion,
+      eventoExiste: !!models.Evento,
+    };
+
+    if (models.Notificacion) {
+      // Obtener estructura de la tabla
+      const sequelize = models.sequelize;
+      const [results] = await sequelize.query(`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'notificacion'
+      `);
+      resultado.columnasNotificacion = results;
+      
+      // Contar notificaciones
+      const count = await models.Notificacion.count();
+      resultado.totalNotificaciones = count;
+    }
+
+    if (models.Evento) {
+      const sequelize = models.sequelize;
+      const [results] = await sequelize.query(`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'evento'
+      `);
+      resultado.columnasEvento = results;
+    }
+
+    res.json(resultado);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -229,5 +306,6 @@ module.exports = {
   markAsRead,
   markAllAsRead,
   getUnreadCount,
-  read
+  read,
+  diagnosticarNotificaciones
 };
