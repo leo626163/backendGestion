@@ -42,7 +42,12 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         }
       ),
       sequelize.query(`
-        SELECT f.nombre_facultad as facultad, COUNT(e.idevento) as total
+         SELECT 
+          f.nombre_facultad as facultad,
+          COUNT(*) FILTER (WHERE e.estado = 'aprobado') as aprobados,
+          COUNT(*) FILTER (WHERE e.estado = 'pendiente') as pendientes,
+          COUNT(*) FILTER (WHERE e.estado = 'rechazado') as rechazados,
+          COUNT(e.idevento) as total
         FROM facultad f
         LEFT JOIN academico a ON f.facultad_id = a.facultad_id
         LEFT JOIN evento e ON a.idacademico = e.idacademico
@@ -96,9 +101,12 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       tasaAprobacion,
       systemStability: 99,
       eventosPorFacultad: eventosPorFacultad.map(r => ({ 
-        facultad: r.facultad, 
-        total: parseInt(r.total) 
-      })),
+      facultad: r.facultad, 
+      total: parseInt(r.total),
+      aprobados: parseInt(r.aprobados) || 0,
+      pendientes: parseInt(r.pendientes) || 0,
+      rechazados: parseInt(r.rechazados) || 0
+    })),
       eventosPorDia: eventosPorDiaCompleto
     });
 
