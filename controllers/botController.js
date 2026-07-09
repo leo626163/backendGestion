@@ -845,21 +845,26 @@ Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
 
       return res.status(200).send('OK');
     }
-    if (text === '/desvincular') {
+        if (text === '/desvincular') {
       const models = getModels();
       const { User } = models;
+
+      console.log(`🔓 [TELEGRAM] Comando /desvincular recibido de chat_id: ${chatId}`);
 
       const usuario = await User.findOne({ 
         where: { telegram_chat_id: chatId.toString() } 
       });
 
       if (!usuario) {
+        console.log(`⚠️ No se encontró usuario vinculado con chat_id: ${chatId}`);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: '❌ Tu cuenta de Telegram no está vinculada a ningún usuario.\n\nEnvía tu email institucional para vincularla.',
         });
         return res.status(200).send('OK');
       }
+
+      console.log(`🔓 Desvinculando usuario: ${usuario.email} (ID: ${usuario.idusuario})`);
 
       // Desvincular Telegram
       await User.update(
@@ -872,27 +877,27 @@ Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
         }
       );
 
-      console.log(`✅ Usuario ${usuario.email} (ID: ${usuario.idusuario}) desvinculado de Telegram`);
+      console.log(`✅ Usuario ${usuario.email} desvinculado correctamente de Telegram`);
 
       const successMessage = 
-        `✅ <b>¡Cuenta desvinculada correctamente!</b>
+`✅ <b>¡Cuenta desvinculada correctamente!</b>
 
-        Tu cuenta de Telegram ya no está vinculada a:
-        👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
-        📧 ${usuario.email}
+Tu cuenta de Telegram ya no está vinculada a:
+👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
+📧 ${usuario.email}
 
-        ❌ Ya no recibirás notificaciones automáticas.
+❌ Ya no recibirás notificaciones automáticas.
 
-        Si quieres volver a vincular tu cuenta, envía tu email institucional.`;
+Si quieres volver a vincular tu cuenta, envía tu email institucional.`;
 
-              await axios.post(`${TELEGRAM_API}/sendMessage`, {
-                chat_id: chatId,
-                text: successMessage,
-                parse_mode: 'HTML'
-              });
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: successMessage,
+        parse_mode: 'HTML'
+      });
 
-              return res.status(200).send('OK');
-            }
+      return res.status(200).send('OK');
+    }
 
     // Comando no reconocido
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
