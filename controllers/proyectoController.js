@@ -585,7 +585,7 @@ const getEventoById = asyncHandler(async (req, res) => {
 
     const [layoutData] = await sequelize.query(
   `SELECT idlayout, nombre, url_imagen 
-   FROM layout 
+   FROM layouts 
    WHERE idlayout = ?`,
   { replacements: [evento.idlayout] }
 );
