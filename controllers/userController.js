@@ -614,20 +614,21 @@ const linkTelegramAccount = asyncHandler(async (req, res) => {
   }
 });
 const unlinkTelegram = asyncHandler(async (req, res) => {
-   try {
-    const userId = req.user.id; // ID del usuario autenticado desde el token
+  try {
+    const userId = req.user.idusuario; // ✅ Cambiado de req.user.id a req.user.idusuario
+    const models = getModels();
+    const { User } = models; // ✅ Obtener el modelo User
     
     console.log(`🔗 Desvinculando Telegram del usuario ${userId}`);
     
-    // Actualizar solo los campos de Telegram
-    const [updated] = await Usuario.update(
+    // ✅ Actualizar usando el modelo User correcto
+    const [updated] = await User.update(
       { 
         telegram_chat_id: null, 
         telegram_username: null 
       },
       { 
-        where: { idusuario: userId },
-        fields: ['telegram_chat_id', 'telegram_username']
+        where: { idusuario: userId }
       }
     );
 
@@ -648,7 +649,7 @@ const unlinkTelegram = asyncHandler(async (req, res) => {
       error: error.message 
     });
   }
-})
+});
 
  const getProfile = asyncHandler(async (req, res) => {
   

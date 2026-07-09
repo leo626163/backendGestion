@@ -518,6 +518,7 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
 • /comite - Eventos donde eres comité
 • /resumen - Resumen completo con estadísticas
 • /estado - Verificar vinculación
+• /desvincular - Desvincular cuenta de Telegram
 • /ayuda - Mostrar ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -553,7 +554,6 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
       return res.status(200).send('OK');
     }
 
-    // 🟢 EVENTOS APROBADOS (DETALLADO)
     if (text === '/mis_eventos') {
       const models = getModels();
       const { User } = models;
@@ -608,7 +608,6 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
       return res.status(200).send('OK');
     }
 
-    // 🟡 EVENTOS PENDIENTES (DETALLADO)
     if (text === '/pendientes') {
       const models = getModels();
       const { User } = models;
@@ -652,7 +651,6 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
       return res.status(200).send('OK');
     }
 
-    // 🔴 EVENTOS RECHAZADOS (DETALLADO)
     if (text === '/rechazados') {
       const models = getModels();
       const { User } = models;
@@ -696,7 +694,6 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
       return res.status(200).send('OK');
     }
 
-    // 👥 EVENTOS COMO COMITÉ
     if (text === '/comite') {
       const models = getModels();
       const { User, Evento } = models;
@@ -760,7 +757,6 @@ Ejemplo: <code>juan.perez@unifranz.edu.bo</code>
       return res.status(200).send('OK');
     }
 
-    // 📊 RESUMEN COMPLETO
     if (text === '/resumen') {
       const models = getModels();
       const { User } = models;
@@ -825,20 +821,21 @@ Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
       const helpMessage = 
 `📚 <b>Comandos disponibles:</b>
 
-<b>Vinculación:</b>
-• /start - Bienvenida
-• /estado - Verificar vinculación
-• Enviar email - Vincular cuenta
+      <b>Vinculación:</b>
+      • /start - Bienvenida
+      • /estado - Verificar vinculación
+      • /desvincular - Desvincular cuenta de Telegram
+      • Enviar email - Vincular cuenta
 
-<b>Eventos:</b>
-• /mis_eventos - Eventos aprobados (detallado)
-• /pendientes - Eventos pendientes (detallado)
-• /rechazados - Eventos rechazados (con motivos)
-• /comite - Eventos donde eres comité
-• /resumen - Resumen completo con estadísticas
+      <b>Eventos:</b>
+      • /mis_eventos - Eventos aprobados (detallado)
+      • /pendientes - Eventos pendientes (detallado)
+      • /rechazados - Eventos rechazados (con motivos)
+      • /comite - Eventos donde eres comité
+      • /resumen - Resumen completo con estadísticas
 
-<b>Otros:</b>
-• /ayuda - Mostrar esta ayuda`;
+      <b>Otros:</b>
+      • /ayuda - Mostrar esta ayuda`;
 
       await axios.post(`${TELEGRAM_API}/sendMessage`, {
         chat_id: chatId,
@@ -848,6 +845,54 @@ Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
 
       return res.status(200).send('OK');
     }
+    if (text === '/desvincular') {
+      const models = getModels();
+      const { User } = models;
+
+      const usuario = await User.findOne({ 
+        where: { telegram_chat_id: chatId.toString() } 
+      });
+
+      if (!usuario) {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: '❌ Tu cuenta de Telegram no está vinculada a ningún usuario.\n\nEnvía tu email institucional para vincularla.',
+        });
+        return res.status(200).send('OK');
+      }
+
+      // Desvincular Telegram
+      await User.update(
+        { 
+          telegram_chat_id: null, 
+          telegram_username: null 
+        },
+        { 
+          where: { idusuario: usuario.idusuario } 
+        }
+      );
+
+      console.log(`✅ Usuario ${usuario.email} (ID: ${usuario.idusuario}) desvinculado de Telegram`);
+
+      const successMessage = 
+        `✅ <b>¡Cuenta desvinculada correctamente!</b>
+
+        Tu cuenta de Telegram ya no está vinculada a:
+        👤 <b>${usuario.nombre} ${usuario.apellidopat || ''}</b>
+        📧 ${usuario.email}
+
+        ❌ Ya no recibirás notificaciones automáticas.
+
+        Si quieres volver a vincular tu cuenta, envía tu email institucional.`;
+
+              await axios.post(`${TELEGRAM_API}/sendMessage`, {
+                chat_id: chatId,
+                text: successMessage,
+                parse_mode: 'HTML'
+              });
+
+              return res.status(200).send('OK');
+            }
 
     // Comando no reconocido
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
