@@ -523,7 +523,6 @@ const getEventoById = asyncHandler(async (req, res) => {
       return res.status(400).json({ message: 'ID de evento inválido' });
     }
 
-    // 1. Obtener el evento principal
     const evento = await Evento.findByPk(eventIdNum, {
       include: [
         {
@@ -583,6 +582,14 @@ const getEventoById = asyncHandler(async (req, res) => {
       { replacements: [eventIdNum] }
     );
     const clasificacion = clasificacionData[0] || null;
+
+    const [layoutData] = await sequelize.query(
+  `SELECT idlayout, nombre, url_imagen 
+   FROM layout 
+   WHERE idlayout = ?`,
+  { replacements: [evento.idlayout] }
+);
+const layout = layoutData[0] || null;
 
     const [objetivosRaw] = await sequelize.query(
       `SELECT 
@@ -715,7 +722,6 @@ const getEventoById = asyncHandler(async (req, res) => {
   }
 
 
-    // ✅ Construir la respuesta completa con actividades y servicios
     const eventoCompleto = {
       ...evento.toJSON(),
       actividadesPrevias: actividades.filter(a => a.tipo === 'Previa'),
@@ -732,6 +738,7 @@ const getEventoById = asyncHandler(async (req, res) => {
       Ingresos: ingresos,
       ObjetivosPDI: pdiIndependientes,
       Clasificacion: clasificacion,
+      layout: layout,
       fase: evento.fase ? [{
         nrofase: evento.fase.nrofase
       }] : []
