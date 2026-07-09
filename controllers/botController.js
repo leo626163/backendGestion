@@ -845,7 +845,7 @@ Usa /mis_eventos, /pendientes, /rechazados o /comite para ver detalles.`;
 
       return res.status(200).send('OK');
     }
-        if (text === '/desvincular') {
+    if (text === '/desvincular') {
       const models = getModels();
       const { User } = models;
 
