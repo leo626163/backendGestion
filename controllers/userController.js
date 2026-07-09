@@ -746,6 +746,7 @@ module.exports = {
   getComiteUser,
   getId,
   linkTelegramAccount,
+  unlinkTelegram,
   getProfile,
   getFacultades,
   getCarrera,
