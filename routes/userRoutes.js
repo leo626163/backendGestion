@@ -8,6 +8,7 @@ const {
   //updateUserRole,
   deleteUserByAdmin,
   linkTelegramAccount,
+  unlinkTelegram,
   getCarrera,
   getComite,
   getComiteUser,
@@ -23,6 +24,7 @@ const router = express.Router();
 
 router.post('/users', createUser); 
 router.post('/link-telegram', linkTelegramAccount); // No protection needed if linking is public
+router.put('/unlink-telegram', unlinkTelegram); // No protection needed if unlinking is public
 router.get('/carreras', getCarrera); 
 router.get('/facultades', getFacultades);
 

@@ -613,6 +613,42 @@ const linkTelegramAccount = asyncHandler(async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+const unlinkTelegram = asyncHandler(async (req, res) => {
+   try {
+    const userId = req.user.id; // ID del usuario autenticado desde el token
+    
+    console.log(`🔗 Desvinculando Telegram del usuario ${userId}`);
+    
+    // Actualizar solo los campos de Telegram
+    const [updated] = await Usuario.update(
+      { 
+        telegram_chat_id: null, 
+        telegram_username: null 
+      },
+      { 
+        where: { idusuario: userId },
+        fields: ['telegram_chat_id', 'telegram_username']
+      }
+    );
+
+    if (updated) {
+      console.log('✅ Telegram desvinculado correctamente');
+      res.json({ 
+        success: true, 
+        message: 'Telegram desvinculado correctamente',
+        data: { telegram_chat_id: null, telegram_username: null }
+      });
+    } else {
+      res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+  } catch (error) {
+    console.error('❌ Error al desvincular Telegram:', error);
+    res.status(500).json({ 
+      message: 'Error al desvincular Telegram', 
+      error: error.message 
+    });
+  }
+})
 
  const getProfile = asyncHandler(async (req, res) => {
   
