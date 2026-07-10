@@ -68,7 +68,6 @@ if (frontendExists) {
   app.get('/Login', (req, res) => res.sendFile(path.join(FRONTEND_PATH, 'Login.html')));
   app.get('/Home', (req, res) => res.sendFile(path.join(FRONTEND_PATH, 'Home.html')));
   app.get('/HomeAdministrador', (req, res) => res.sendFile(path.join(FRONTEND_PATH, 'HomeAdministrador.html')));
-  app.get('/chatbot', (req, res) => res.sendFile(path.join(FRONTEND_PATH, 'chatbot.html')));
 } else {
   app.get('/', (req, res) => res.json({ status: '✅ API online', servidor: 'Railway' }));
 }
