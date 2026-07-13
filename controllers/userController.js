@@ -735,6 +735,20 @@ const getUserByEmail = asyncHandler(async (req, res) => {
 
   res.status(200).json(user);
 });
+const getUserMe = asyncHandler(async (req, res) => {  
+  try{
+   const user = await User.findById(req.user.id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Error en getUserMe:', error);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
+})
 module.exports = {
   createUser,
   getAllUsers,  
@@ -754,4 +768,5 @@ module.exports = {
   getUserProfile,
   getUserByEmail,
   getUsersDaf,
+  getUserMe
 };
