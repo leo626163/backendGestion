@@ -735,20 +735,34 @@ const getUserByEmail = asyncHandler(async (req, res) => {
 
   res.status(200).json(user);
 });
-const getUserMe = asyncHandler(async (req, res) => {  
-  try{
-   const user = await User.findById(req.user.id).select('-password');
+const getUserMe = asyncHandler(async (req, res) => {
+  try {
+    const models = getModels(); 
+    const { User } = models;   
     
+    const user = await User.findByPk(req.user.idusuario, {
+      attributes: { exclude: ['contrasenia'] } // ✅ Sintaxis de Sequelize
+    });
+
     if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-    
-    res.json(user);
+
+    res.json({
+      id: user.idusuario,
+      username: user.username,
+      nombre: user.nombre,
+      apellidopat: user.apellidopat,
+      apellidomat: user.apellidomat,
+      email: user.email,
+      role: user.role,
+      habilitado: user.habilitado,
+    });
   } catch (error) {
     console.error('Error en getUserMe:', error);
-    res.status(500).json({ message: 'Error del servidor' });
+    res.status(500).json({ message: 'Error del servidor', error: error.message });
   }
-})
+});
 module.exports = {
   createUser,
   getAllUsers,  
