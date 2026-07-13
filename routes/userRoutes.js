@@ -28,7 +28,7 @@ router.post('/link-telegram', linkTelegramAccount); // No protection needed if l
 router.put('/unlink-telegram', unlinkTelegram); // No protection needed if unlinking is public
 router.get('/carreras', getCarrera); 
 router.get('/facultades', getFacultades);
-router.get('/me', protect, getUserMe);
+router.get('/users/me', protect, getUserMe);
 
 router.get('/comite',protect,authorize(['admin', 'academico']), getComite);
 router.get('/users/comite', protect, authorize(['admin', 'academico']), getComiteUser);
