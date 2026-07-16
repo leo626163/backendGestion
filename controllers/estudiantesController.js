@@ -390,7 +390,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN evento e ON e.idevento = ei.idevento
        WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
-      { replacements: { facultadId }, type: QueryTypes.SELECT }
+      { replacements: { facultadId }, type: models.sequelize.QueryTypes.SELECT }
     );
 
     console.log('📊 Inscripciones encontradas:', inscripciones.length);
