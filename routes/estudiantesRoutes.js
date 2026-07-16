@@ -12,7 +12,7 @@ const { protect,protect1 } = require('../middleware/authMiddleware.js');
 
 const router = express.Router();
 router.get('/facultad/:idfacultad', protect1, getEventosPorFacultadEstudiante);
-router.get('/estudiantesInscritos',protect, estudiantesInscritosEnEvento);
+router.get('/estudiantes-inscritos-facultad',protect, estudiantesInscritosEnEvento);
 
 router.get('/', protect, getAllEstudiantes);
 router.get('/:idusuario', protect1, getEstudiantes);
