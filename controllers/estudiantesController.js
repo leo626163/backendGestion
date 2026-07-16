@@ -1,6 +1,5 @@
 const asyncHandler = require('express-async-handler');
 const { getModels } = require("../models/index.js");
-const asyncHandler = require('express-async-handler');
 const { Op } = require('sequelize');
 
 // ✅ GET ESTUDIANTE POR ID DE USUARIO
