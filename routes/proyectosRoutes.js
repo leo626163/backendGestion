@@ -11,7 +11,8 @@ const {
   getEstudianteFacultad,
   deleteEvento,
   registrarEventoEstudiante,
-  getMisInscripciones
+  getMisInscripciones,
+  estudiantesInscritosEnEvento
 } = require('../controllers/proyectoController.js');
 const {
   sendNotification,
