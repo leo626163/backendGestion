@@ -1810,23 +1810,25 @@ console.log('🔍 usuariosNuevosEsteMes:', usuariosNuevosEsteMes);
   });
 });
 const getHistoricalData = asyncHandler(async (req, res) => {
-  // Verificar que sea admin
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Acceso denegado: solo administradores' });
-  }
-
-  const models = getModels();
-  const { Evento } = models;
-
   try {
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ message: 'Acceso denegado: usuario no autenticado' });
+    }
+
+    const models = getModels();
+    if (!models || !models.Evento) {
+      console.error('❌ Modelos no inicializados correctamente en getHistoricalData');
+      return res.status(500).json({ message: 'Error de configuración del servidor' });
+    }
+    
+    const { Evento } = models;
     const now = new Date();
     const historical = [];
 
-    // Últimos 6 meses (de más antiguo a más reciente)
     for (let i = 5; i >= 0; i--) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthName = monthDate.toLocaleString('es-ES', { month: 'short' });
-
+      
       const count = await Evento.count({
         where: {
           created_at: {
@@ -1834,18 +1836,24 @@ const getHistoricalData = asyncHandler(async (req, res) => {
             [Op.lt]: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1)
           }
         }
+      }).catch(err => {
+        console.error(`❌ Error en Evento.count para ${monthName}:`, err.message);
+        return 0; // Fallback seguro
       });
 
       historical.push({
         name: monthName,
-        eventos: count
+        eventos: count || 0
       });
     }
 
     res.status(200).json({ historical });
   } catch (error) {
-    console.error('Error en getHistoricalData:', error);
-    res.status(500).json({ message: 'Error al cargar datos históricos' });
+    console.error('❌ Error crítico en getHistoricalData:', error);
+    res.status(500).json({ 
+      message: 'Error al cargar datos históricos', 
+      error: error.message 
+    });
   }
 });
 const getEventoCompletoById = asyncHandler(async (req, res) => {
@@ -2249,7 +2257,10 @@ const getMisInscripciones = asyncHandler(async (req, res) => {
 });
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
   try {
-    const idUsuario = req.user.id;
+    const models = getModels();
+    const {User} = models;
+    
+    const idUsuario = req.user.idusuario;
 
     const usuario = await sequelize.query(
       `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
