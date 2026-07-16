@@ -308,6 +308,11 @@ const getMyHistoricalData = asyncHandler(async (req, res) => {
     
     const idsAcademico = academicos.map(a => a.idacademico).filter(Boolean);
 
+    // ✅ CORREGIDO: Evitar error de sintaxis SQL "IN ()" si el array está vacío
+    if (idsAcademico.length === 0) {
+      return res.status(200).json({ historical: [] });
+    }
+
     const results = await sequelize.query(`
       SELECT 
         EXTRACT(MONTH FROM "fechaevento") as month_num,
@@ -345,7 +350,7 @@ const getMyHistoricalData = asyncHandler(async (req, res) => {
 
     res.status(200).json({ historical });
   } catch (error) {
-    console.error('Error getMyHistoricalData:', error);
+    console.error('❌ Error en getMyHistoricalData:', error);
     res.status(500).json({ 
       error: 'Error al cargar datos históricos',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined

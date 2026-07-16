@@ -2212,14 +2212,11 @@ const getMisInscripciones = asyncHandler(async (req, res) => {
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    const sequelize = models.sequelize;
-    const { QueryTypes } = require('sequelize'); // ✅ Importación corregida
-    
-    // ✅ Corregido: usar idusuario en lugar de id
+
     const idUsuario = req.user.idusuario; 
     
-    const usuario = await sequelize.query(
-      `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
+    const usuario = await models.sequelize.query(
+      `SELECT facultad_id FROM usuario WHERE idusuario = ?`,
       { replacements: { idUsuario }, type: QueryTypes.SELECT }
     );
 
@@ -2237,9 +2234,9 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN estudiante est ON est.idestudiante = ei.idestudiante
        JOIN usuario u ON u.idusuario = est.idusuario
        JOIN evento e ON e.idevento = ei.idevento
-       WHERE est.facultad_id = :facultadId
+       WHERE est.facultad_id = ?
        ORDER BY e.fechaevento DESC`,
-      { replacements: { facultadId }, type: QueryTypes.SELECT }
+      { replacements: { facultadId }, type: sequelize.QueryTypes.SELECT }
     );
 
     const eventosAgrupados = {};
