@@ -2247,6 +2247,57 @@ const getMisInscripciones = asyncHandler(async (req, res) => {
 
   res.json(estudiante.eventosInscritos);
 });
+const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
+  try {
+    const idUsuario = req.user.id;
+
+    const usuario = await sequelize.query(
+      `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
+      { replacements: { idUsuario }, type: QueryTypes.SELECT }
+    );
+
+    if (!usuario.length || !usuario[0].facultad_id) {
+      return res.status(400).json({ error: 'El usuario no tiene facultad asignada' });
+    }
+
+    const facultadId = usuario[0].facultad_id;
+
+    const inscripciones = await sequelize.query(
+      `SELECT e.idevento, e.nombreevento, e.fechaevento,
+              est.idestudiante, u.nombre, u.apellidopat, u.apellidomat,
+              ei.fecha_inscripcion
+       FROM evento_inscripcion ei
+       JOIN estudiante est ON est.idestudiante = ei.idestudiante
+       JOIN usuario u ON u.idusuario = est.idusuario
+       JOIN eventos e ON e.idevento = ei.idevento
+       WHERE est.facultad_id = :facultadId
+       ORDER BY e.fechaevento DESC`,
+      { replacements: { facultadId }, type: QueryTypes.SELECT }
+    );
+
+    const eventosAgrupados = {};
+    inscripciones.forEach(row => {
+      if (!eventosAgrupados[row.idevento]) {
+        eventosAgrupados[row.idevento] = {
+          idevento: row.idevento,
+          nombreevento: row.nombreevento,
+          fechaevento: row.fechaevento,
+          estudiantes: []
+        };
+      }
+      eventosAgrupados[row.idevento].estudiantes.push({
+        idestudiante: row.idestudiante,
+        nombre: `${row.nombre} ${row.apellidopat} ${row.apellidomat}`,
+        fecha_inscripcion: row.fecha_inscripcion
+      });
+    });
+
+    res.json({ eventos: Object.values(eventosAgrupados) });
+  } catch (error) {
+    console.error('Error al obtener estudiantes inscritos:', error);
+    res.status(500).json({ error: 'Error al obtener estudiantes inscritos' });
+  }
+})
 
 module.exports ={
     createEvento,
