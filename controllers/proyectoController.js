@@ -1,5 +1,5 @@
 const { getModels } = require('../models/index');
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
 const asyncHandler = require('express-async-handler');
 const { sendNotification } = require('./notificationController.js');
 
@@ -2212,11 +2212,12 @@ const getMisInscripciones = asyncHandler(async (req, res) => {
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
+    const sequelize = models.sequelize;
 
     const idUsuario = req.user.idusuario; 
     
     const usuario = await models.sequelize.query(
-      `SELECT facultad_id FROM usuario WHERE idusuario = ?`,
+      `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
       { replacements: { idUsuario }, type: QueryTypes.SELECT }
     );
 
@@ -2234,7 +2235,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN estudiante est ON est.idestudiante = ei.idestudiante
        JOIN usuario u ON u.idusuario = est.idusuario
        JOIN evento e ON e.idevento = ei.idevento
-       WHERE est.facultad_id = ?
+       WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
       { replacements: { facultadId }, type: sequelize.QueryTypes.SELECT }
     );
