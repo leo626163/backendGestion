@@ -1809,53 +1809,7 @@ console.log('🔍 usuariosNuevosEsteMes:', usuariosNuevosEsteMes);
     tiempoPromedioAprobacion: 0,
   });
 });
-const getHistoricalData = asyncHandler(async (req, res) => {
-  try {
-    if (!req.user || !req.user.role) {
-      return res.status(403).json({ message: 'Acceso denegado: usuario no autenticado' });
-    }
 
-    const models = getModels();
-    if (!models || !models.Evento) {
-      console.error('❌ Modelos no inicializados correctamente en getHistoricalData');
-      return res.status(500).json({ message: 'Error de configuración del servidor' });
-    }
-    
-    const { Evento } = models;
-    const now = new Date();
-    const historical = [];
-
-    for (let i = 5; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthName = monthDate.toLocaleString('es-ES', { month: 'short' });
-      
-      const count = await Evento.count({
-        where: {
-          created_at: {
-            [Op.gte]: new Date(monthDate.getFullYear(), monthDate.getMonth(), 1),
-            [Op.lt]: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1)
-          }
-        }
-      }).catch(err => {
-        console.error(`❌ Error en Evento.count para ${monthName}:`, err.message);
-        return 0; // Fallback seguro
-      });
-
-      historical.push({
-        name: monthName,
-        eventos: count || 0
-      });
-    }
-
-    res.status(200).json({ historical });
-  } catch (error) {
-    console.error('❌ Error crítico en getHistoricalData:', error);
-    res.status(500).json({ 
-      message: 'Error al cargar datos históricos', 
-      error: error.message 
-    });
-  }
-});
 const getEventoCompletoById = asyncHandler(async (req, res) => {
   const models = getModels();
   const { Evento, User, Recurso, ClasificacionEstrategica, Subcategoria } = models;
