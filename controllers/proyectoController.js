@@ -2324,5 +2324,6 @@ module.exports ={
     getEventos,
     getEventosAprobadosPorFacultadYFecha,
     registrarEventoEstudiante,
-    getMisInscripciones
+    getMisInscripciones,
+    estudiantesInscritosEnEvento
 }
