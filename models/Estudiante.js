@@ -19,15 +19,6 @@ module.exports = (sequelize,DataTypes)=>{
       defaultValue: 5,
       field: 'nivelacceso'
     },
-    idcarrera: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      field: 'idcarrera',
-      references: {
-        model: 'carrera', // Nombre de la tabla en la BD
-        key: 'idcarrera'
-      }
-    },
     facultad_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -65,6 +56,12 @@ Estudiante.associate = function(models) {
         targetKey: 'facultad_id',   // ← PK en tabla facultad
         as: 'facultad'
       });
+      Estudiante.belongsToMany(models.Evento, {
+        through: 'evento_inscripciones',
+        foreignKey: 'idestudiante',
+        otherKey: 'idevento',
+        as: 'eventosInscritos'
+});
 
 
 }

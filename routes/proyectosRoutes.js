@@ -9,7 +9,9 @@ const {
   getCarreraById,
   getFacultadById,
   getEstudianteFacultad,
-  deleteEvento
+  deleteEvento,
+  registrarEventoEstudiante,
+  getMisInscripciones
 } = require('../controllers/proyectoController.js');
 const {
   sendNotification,
@@ -19,6 +21,8 @@ const {
 } = require('../controllers/notificationController.js');
 
 const router = express.Router();
+router.get('/mis-inscripciones', protect, getMisInscripciones);
+router.post('/:id/registrar', protect, registrarEventoEstudiante);
 router.put('/:id/approve',protect,authorize('admin'), aprobarEvento);
 router.put('/:id/reject',protect,authorize('admin'), deleteEvento);
 router.get('/estudiantes/facultad/:idfacultad',getEstudianteFacultad) ;
