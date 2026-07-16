@@ -41,7 +41,7 @@ router.get('/rechazados',protect, getEventosRechazados);
 //router.get('/details/:id', getEventDetailsById);
 router.get('/mis-inscripciones', protect, getMisInscripciones);
 router.post('/:id/registrar', protect, registrarEventoEstudiante);
-router.get('/estudiantes-inscritos-facultad',protect, estudiantesInscritosEnEvento);
+router.get('/estudiantesInscritos',protect, estudiantesInscritosEnEvento);
 
 //router.get('/listar-pendientes', pendientes); // si necesitas esta ruta
 //router.get('/pendientes',protect, getEventosPendientesPorArea);
