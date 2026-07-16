@@ -361,12 +361,12 @@ const getEventosPorFacultadEstudiante = asyncHandler(async (req, res) => {
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
   const models = getModels();
   const { Estudiante, Evento, Usuario } = models;
+  const idUsuario = req.user.idusuario; 
   try {
 
-    const idUsuario = req.params.id; 
     console.log('🔍 ID Usuario:', idUsuario);
     
-   /* const usuario = await models.sequelize.query(
+   const usuario = await models.sequelize.query(
       `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
       { replacements: { idUsuario }, type: models.sequelize.QueryTypes.SELECT }
     );
@@ -390,7 +390,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN evento e ON e.idevento = ei.idevento
        WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
-      { replacements: { facultadId }, type: models.sequelize.QueryTypes.SELECT }
+      { replacements: { facultadId }, type: QueryTypes.SELECT }
     );
 
     console.log('📊 Inscripciones encontradas:', inscripciones.length);
@@ -414,7 +414,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
     });
 
     console.log('✅ Eventos agrupados:', Object.keys(eventosAgrupados).length);
-    res.json({ eventos: Object.values(eventosAgrupados) });*/
+    res.json({ eventos: Object.values(eventosAgrupados) });
   } catch (error) {
     console.error('❌ Error al obtener estudiantes inscritos:', error);
     res.status(500).json({ error: 'Error al obtener estudiantes inscritos', details: error.message });
