@@ -314,14 +314,14 @@ const getMyHistoricalData = asyncHandler(async (req, res) => {
     }
 
     const results = await sequelize.query(`
-      SELECT 
-        EXTRACT(MONTH FROM "fechaevento") as month_num,
-        EXTRACT(YEAR FROM "fechaevento") as year_num,
+       SELECT 
+        EXTRACT(MONTH FROM "fechaevento"::DATE) as month_num,
+        EXTRACT(YEAR FROM "fechaevento"::DATE) as year_num,
         COUNT(*) as eventos
       FROM "evento"
       WHERE idacademico IN (:idsAcademico)
-        AND "fechaevento" >= CURRENT_DATE - INTERVAL '6 months'
-      GROUP BY EXTRACT(MONTH FROM "fechaevento"), EXTRACT(YEAR FROM "fechaevento")
+        AND "fechaevento"::DATE >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY EXTRACT(MONTH FROM "fechaevento"::DATE), EXTRACT(YEAR FROM "fechaevento"::DATE)
       ORDER BY year_num ASC, month_num ASC
     `, { 
       replacements: { idsAcademico },
