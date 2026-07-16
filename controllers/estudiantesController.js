@@ -359,28 +359,24 @@ const getEventosPorFacultadEstudiante = asyncHandler(async (req, res) => {
   }
 });
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
-  const models = getModels();
-  const { Estudiante, Evento, Usuario } = models;
-  const idUsuario = req.user.idusuario; 
   try {
-
-    console.log('🔍 ID Usuario:', idUsuario);
+    const models = getModels();
+    const sequelize = models.sequelize;
+    const idUsuario = req.user.idusuario; 
     
-   const usuario = await models.sequelize.query(
+    const usuario = await sequelize.query(
       `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
-      { replacements: { idUsuario }, type: models.sequelize.QueryTypes.SELECT }
+      { replacements: { idUsuario }, type: QueryTypes.SELECT }
     );
-
-    console.log(' Usuario encontrado:', usuario);
 
     if (!usuario.length || !usuario[0].facultad_id) {
       return res.status(400).json({ error: 'El usuario no tiene facultad asignada' });
     }
 
     const facultadId = usuario[0].facultad_id;
-    console.log('🏫 Facultad ID:', facultadId);
     
-    const inscripciones = await models.sequelize.query(
+    // ✅ CORREGIDO: 'evento_inscripciones' (plural) para coincidir con la tabla real
+    const inscripciones = await sequelize.query(
       `SELECT e.idevento, e.nombreevento, e.fechaevento,
               est.idestudiante, u.nombre, u.apellidopat, u.apellidomat,
               ei.fecha_inscripcion
@@ -390,11 +386,8 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN evento e ON e.idevento = ei.idevento
        WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
-      { replacements: { facultadId }, type: models.sequelize.QueryTypes.SELECT }
+      { replacements: { facultadId }, type: QueryTypes.SELECT }
     );
-
-    console.log('📊 Inscripciones encontradas:', inscripciones.length);
-    console.log('📦 Datos:', JSON.stringify(inscripciones, null, 2));
 
     const eventosAgrupados = {};
     inscripciones.forEach(row => {
@@ -413,7 +406,6 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
       });
     });
 
-    console.log('✅ Eventos agrupados:', Object.keys(eventosAgrupados).length);
     res.json({ eventos: Object.values(eventosAgrupados) });
   } catch (error) {
     console.error('❌ Error al obtener estudiantes inscritos:', error);
