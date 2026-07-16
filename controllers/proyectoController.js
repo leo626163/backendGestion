@@ -2231,7 +2231,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
       `SELECT e.idevento, e.nombreevento, e.fechaevento,
               est.idestudiante, u.nombre, u.apellidopat, u.apellidomat,
               ei.fecha_inscripcion
-       FROM evento_inscripcion ei
+       FROM evento_inscripciones ei
        JOIN estudiante est ON est.idestudiante = ei.idestudiante
        JOIN usuario u ON u.idusuario = est.idusuario
        JOIN evento e ON e.idevento = ei.idevento
