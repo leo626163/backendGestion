@@ -2215,17 +2215,21 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
     const sequelize = models.sequelize;
 
     const idUsuario = req.user.idusuario; 
+    console.log('🔍 ID Usuario:', idUsuario);
     
     const usuario = await models.sequelize.query(
       `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
       { replacements: { idUsuario }, type: QueryTypes.SELECT }
     );
 
+    console.log(' Usuario encontrado:', usuario);
+
     if (!usuario.length || !usuario[0].facultad_id) {
       return res.status(400).json({ error: 'El usuario no tiene facultad asignada' });
     }
 
     const facultadId = usuario[0].facultad_id;
+    console.log('🏫 Facultad ID:', facultadId);
     
     const inscripciones = await sequelize.query(
       `SELECT e.idevento, e.nombreevento, e.fechaevento,
@@ -2239,6 +2243,9 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        ORDER BY e.fechaevento DESC`,
       { replacements: { facultadId }, type: sequelize.QueryTypes.SELECT }
     );
+
+    console.log('📊 Inscripciones encontradas:', inscripciones.length);
+    console.log('📦 Datos:', JSON.stringify(inscripciones, null, 2));
 
     const eventosAgrupados = {};
     inscripciones.forEach(row => {
@@ -2257,6 +2264,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
       });
     });
 
+    console.log('✅ Eventos agrupados:', Object.keys(eventosAgrupados).length);
     res.json({ eventos: Object.values(eventosAgrupados) });
   } catch (error) {
     console.error('❌ Error al obtener estudiantes inscritos:', error);
