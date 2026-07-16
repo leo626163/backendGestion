@@ -1,6 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const { getModels } = require("../models/index.js");
-const { Op } = require('sequelize');
+const { Op,QueryTypes } = require('sequelize');
 
 // ✅ GET ESTUDIANTE POR ID DE USUARIO
 const getEstudiantes = asyncHandler(async (req, res) => {
@@ -386,7 +386,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        JOIN evento e ON e.idevento = ei.idevento
        WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
-      { replacements: { facultadId }, type: QueryTypes.SELECT }
+      { replacements: { facultadId }, type: models.sequelize.QueryTypes.SELECT }
     );
 
     const eventosAgrupados = {};
