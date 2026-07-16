@@ -15,7 +15,9 @@ const  {
   getEventosAprobadosPorFacultad,
   getEventosRechazados,
   getEventos,
-  getEventosAprobadosPorFacultadYFecha
+  getEventosAprobadosPorFacultadYFecha,
+  getMisInscripciones,
+  registrarEventoEstudiante,
  
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
@@ -36,7 +38,8 @@ router.get('/dashboard/stats', protect, getDashboardStats);
 router.get('/dashboard/historical', protect, getHistoricalData);
 router.get('/rechazados',protect, getEventosRechazados);
 //router.get('/details/:id', getEventDetailsById);
-
+router.get('/mis-inscripciones', protect, getMisInscripciones);
+router.post('/:id/registrar', protect, registrarEventoEstudiante);
 
 //router.get('/listar-pendientes', pendientes); // si necesitas esta ruta
 //router.get('/pendientes',protect, getEventosPendientesPorArea);

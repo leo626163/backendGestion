@@ -21,11 +21,10 @@ const {
 } = require('../controllers/notificationController.js');
 
 const router = express.Router();
-router.post('/:id/registrar', protect, registrarEventoEstudiante);
 router.put('/:id/approve',protect,authorize('admin'), aprobarEvento);
 router.put('/:id/reject',protect,authorize('admin'), deleteEvento);
 router.get('/estudiantes/facultad/:idfacultad',getEstudianteFacultad) ;
-router.get('/mis-inscripciones', protect, getMisInscripciones);
+
 
 router.get('/carreras/:id', protect, getCarreraById);
 
