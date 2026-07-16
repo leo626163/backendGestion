@@ -2258,10 +2258,12 @@ const getMisInscripciones = asyncHandler(async (req, res) => {
 const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
   try {
     const models = getModels();
-    const {User} = models;
+    const sequelize = models.sequelize;
+    const { QueryTypes } = require('sequelize'); // ✅ Importación corregida
     
-    const idUsuario = req.user.idusuario;
-
+    // ✅ Corregido: usar idusuario en lugar de id
+    const idUsuario = req.user.idusuario; 
+    
     const usuario = await sequelize.query(
       `SELECT facultad_id FROM usuario WHERE idusuario = :idUsuario`,
       { replacements: { idUsuario }, type: QueryTypes.SELECT }
@@ -2272,7 +2274,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
     }
 
     const facultadId = usuario[0].facultad_id;
-
+    
     const inscripciones = await sequelize.query(
       `SELECT e.idevento, e.nombreevento, e.fechaevento,
               est.idestudiante, u.nombre, u.apellidopat, u.apellidomat,
@@ -2280,7 +2282,7 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
        FROM evento_inscripcion ei
        JOIN estudiante est ON est.idestudiante = ei.idestudiante
        JOIN usuario u ON u.idusuario = est.idusuario
-       JOIN eventos e ON e.idevento = ei.idevento
+       JOIN evento e ON e.idevento = ei.idevento
        WHERE est.facultad_id = :facultadId
        ORDER BY e.fechaevento DESC`,
       { replacements: { facultadId }, type: QueryTypes.SELECT }
@@ -2298,17 +2300,67 @@ const estudiantesInscritosEnEvento = asyncHandler(async (req, res) => {
       }
       eventosAgrupados[row.idevento].estudiantes.push({
         idestudiante: row.idestudiante,
-        nombre: `${row.nombre} ${row.apellidopat} ${row.apellidomat}`,
+        nombre: `${row.nombre} ${row.apellidopat} ${row.apellidomat}`.trim(),
         fecha_inscripcion: row.fecha_inscripcion
       });
     });
 
     res.json({ eventos: Object.values(eventosAgrupados) });
   } catch (error) {
-    console.error('Error al obtener estudiantes inscritos:', error);
-    res.status(500).json({ error: 'Error al obtener estudiantes inscritos' });
+    console.error('❌ Error al obtener estudiantes inscritos:', error);
+    res.status(500).json({ error: 'Error al obtener estudiantes inscritos', details: error.message });
   }
-})
+});
+
+const getHistoricalData = asyncHandler(async (req, res) => {
+  try {
+    // ✅ Corregido: Permitir acceso a cualquier rol autenticado (no solo admin)
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ message: 'Acceso denegado: usuario no autenticado' });
+    }
+
+    const models = getModels();
+    if (!models || !models.Evento) {
+      console.error('❌ Modelos no inicializados correctamente en getHistoricalData');
+      return res.status(500).json({ message: 'Error de configuración del servidor' });
+    }
+    
+    const { Evento } = models;
+    const now = new Date();
+    const historical = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = monthDate.toLocaleString('es-ES', { month: 'short' });
+      
+      // ✅ Agregamos .catch() para que un fallo en un mes no rompa todo el endpoint
+      const count = await Evento.count({
+        where: {
+          created_at: {
+            [Op.gte]: new Date(monthDate.getFullYear(), monthDate.getMonth(), 1),
+            [Op.lt]: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1)
+          }
+        }
+      }).catch(err => {
+        console.error(`❌ Error en Evento.count para ${monthName}:`, err.message);
+        return 0; // Fallback seguro
+      });
+
+      historical.push({
+        name: monthName,
+        eventos: count || 0
+      });
+    }
+
+    res.status(200).json({ historical });
+  } catch (error) {
+    console.error('❌ Error crítico en getHistoricalData:', error);
+    res.status(500).json({ 
+      message: 'Error al cargar datos históricos', 
+      error: error.message 
+    });
+  }
+});
 
 module.exports ={
     createEvento,
