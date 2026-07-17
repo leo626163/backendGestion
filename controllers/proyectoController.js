@@ -1349,10 +1349,11 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     let eventos = [];
 
     if (userRole === 'admin' || userRole === 'daf') {
+      // Admin ve todos los eventos aprobados que ya pasaron su fecha
       eventos = await Evento.findAll({
         where: { 
           estado: 'aprobado',
-          fechaevento: { [Op.lt]: hoy }
+          fechaevento: { [Op.lt]: hoy } // fechaevento < hoy
         },
         attributes: { include: ['idfase'] },
         include: [
@@ -1376,9 +1377,10 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
             ]
           }
         ],
-        order: [['fechaevento', 'ASC']]
+        order: [['fechaevento', 'ASC']] // Los más antiguos primero
       });
     } else if (userRole === 'academico') {
+      // Académico ve los eventos vencidos de su facultad o donde es parte del comité
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
@@ -1400,8 +1402,12 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       }
 
       const condiciones = [];
-      if (idsCreadores.length > 0) condiciones.push({ idacademico: { [Op.in]: idsCreadores } });
-      if (idsEventosComite.length > 0) condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
+      if (idsCreadores.length > 0) {
+        condiciones.push({ idacademico: { [Op.in]: idsCreadores } });
+      }
+      if (idsEventosComite.length > 0) {
+        condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
+      }
 
       if (condiciones.length > 0) {
         eventos = await Evento.findAll({
@@ -1423,28 +1429,18 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     } else {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
+    
 
-    // ✅ CLASIFICAR EVENTOS POR CATEGORÍAS
-    const categorias = {
-      hace_semanas: [],
-      hace_1_mes: [],
-      hace_2_3_meses: [],
-      por_ano: {}
-    };
-
-    eventos.forEach(event => {
-      const fechaEvento = new Date(event.fechaevento);
-      const diffMs = hoy - fechaEvento;
-      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      
+    // Formatear la respuesta para que coincida exactamente con lo que espera tu frontend
+    const eventosFormateados = eventos.map(event => {
       const creador = event.academicoCreador;
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
       
-      const eventoFormateado = {
+      return {
         idevento: event.idevento,
         nombreevento: event.nombreevento || 'Sin título',
-        descripcion: event.descripcion || '',
-        fechaevento: event.fechaevento,
+        descripcion: event.descripcion || 'Sin descripción',
+        fechaevento: event.fechaevento, // El frontend lo usa para calcular días vencidos
         horaevento: event.horaevento || 'N/A',
         lugarevento: event.lugarevento || 'Sin ubicación',
         estado: event.estado,
@@ -1452,56 +1448,15 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         idacademico: event.idacademico,
         academico: creador ? {
           id: creador.idusuario,
-          nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim()
+          nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() || 'Académico'
         } : null,
         facultad: facultadNombre,
-        diasVencido: diffDias,
-        fechaVencimiento: fechaEvento.toISOString()
+        created_at: event.created_at,
+        updated_at: event.updated_at
       };
-
-      // Clasificar
-      if (diffDias < 30) {
-        categorias.hace_semanas.push(eventoFormateado);
-      } else if (diffDias >= 30 && diffDias < 60) {
-        categorias.hace_1_mes.push(eventoFormateado);
-      } else if (diffDias >= 60 && diffDias < 90) {
-        categorias.hace_2_3_meses.push(eventoFormateado);
-      } else {
-        const ano = fechaEvento.getFullYear();
-        if (!categorias.por_ano[ano]) categorias.por_ano[ano] = [];
-        categorias.por_ano[ano].push(eventoFormateado);
-      }
     });
 
-    // Ordenar
-    categorias.hace_semanas.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
-    categorias.hace_1_mes.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
-    categorias.hace_2_3_meses.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
-    
-    const anosOrdenados = Object.keys(categorias.por_ano).sort((a, b) => b - a);
-    const porAnoOrdenado = {};
-    anosOrdenados.forEach(ano => {
-      porAnoOrdenado[ano] = categorias.por_ano[ano].sort(
-        (a, b) => new Date(b.fechaevento) - new Date(a.fechaevento)
-      );
-    });
-
-    return res.status(200).json({
-      resumen: {
-        total: eventos.length,
-        hace_semanas: categorias.hace_semanas.length,
-        hace_1_mes: categorias.hace_1_mes.length,
-        hace_2_3_meses: categorias.hace_2_3_meses.length,
-        por_ano: Object.values(categorias.por_ano).reduce((acc, arr) => acc + arr.length, 0)
-      },
-      categorias: {
-        hace_semanas: categorias.hace_semanas,
-        hace_1_mes: categorias.hace_1_mes,
-        hace_2_3_meses: categorias.hace_2_3_meses,
-        por_ano: porAnoOrdenado
-      }
-    });
-
+    return res.status(200).json(eventosFormateados);
   } catch (error) {
     console.error('❌ Error en getEventosVencidos:', error);
     return res.status(500).json({ 
