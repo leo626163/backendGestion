@@ -1342,18 +1342,18 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
   
   try {
     const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0); // Normalizar a medianoche para comparación precisa de fechas
+    hoy.setHours(0, 0, 0, 0);
 
     const userId = req.user.idusuario;
     const userRole = req.user.role;
     let eventos = [];
 
     if (userRole === 'admin' || userRole === 'daf') {
-      // Admin ve todos los eventos aprobados que ya pasaron su fecha
+      // Admin ve todos los eventos aprobados vencidos
       eventos = await Evento.findAll({
         where: { 
           estado: 'aprobado',
-          fechaevento: { [Op.lt]: hoy } // fechaevento < hoy
+          fechaevento: { [Op.lt]: hoy } // Fecha ya pasó
         },
         attributes: { include: ['idfase'] },
         include: [
@@ -1380,7 +1380,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         order: [['fechaevento', 'ASC']] // Los más antiguos primero
       });
     } else if (userRole === 'academico') {
-      // Académico ve los eventos vencidos de su facultad o donde es parte del comité
+      // Académico ve solo los de su facultad o donde es comité
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
@@ -1430,16 +1430,31 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
 
-    // Formatear la respuesta para que coincida exactamente con lo que espera tu frontend
-    const eventosFormateados = eventos.map(event => {
+    // Categorizar eventos por tiempo de vencimiento
+    const categorias = {
+      hace_semanas: [],      // Menos de 1 mes
+      hace_1_mes: [],        // Entre 1 y 2 meses
+      hace_2_3_meses: [],    // Entre 2 y 3 meses
+      por_ano: {}            // Más de 3 meses, agrupados por año
+    };
+
+    const unMesEnMs = 30 * 24 * 60 * 60 * 1000;
+    const dosMesesEnMs = 60 * 24 * 60 * 60 * 1000;
+    const tresMesesEnMs = 90 * 24 * 60 * 60 * 1000;
+
+    eventos.forEach(event => {
+      const fechaEvento = new Date(event.fechaevento);
+      const diffMs = hoy - fechaEvento;
+      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
       const creador = event.academicoCreador;
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
       
-      return {
+      const eventoFormateado = {
         idevento: event.idevento,
         nombreevento: event.nombreevento || 'Sin título',
-        descripcion: event.descripcion || 'Sin descripción',
-        fechaevento: event.fechaevento, // El frontend lo usa para calcular días vencidos
+        descripcion: event.descripcion || '',
+        fechaevento: event.fechaevento,
         horaevento: event.horaevento || 'N/A',
         lugarevento: event.lugarevento || 'Sin ubicación',
         estado: event.estado,
@@ -1447,15 +1462,63 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         idacademico: event.idacademico,
         academico: creador ? {
           id: creador.idusuario,
-          nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() || 'Académico'
+          nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim()
         } : null,
         facultad: facultadNombre,
-        created_at: event.created_at,
-        updated_at: event.updated_at
+        diasVencido: diffDias,
+        fechaVencimiento: fechaEvento.toISOString()
       };
+
+      // Clasificar por categoría
+      if (diffDias < 30) {
+        // Hace menos de un mes (semanas)
+        categorias.hace_semanas.push(eventoFormateado);
+      } else if (diffDias >= 30 && diffDias < 60) {
+        // Hace 1 mes
+        categorias.hace_1_mes.push(eventoFormateado);
+      } else if (diffDias >= 60 && diffDias < 90) {
+        // Hace 2-3 meses
+        categorias.hace_2_3_meses.push(eventoFormateado);
+      } else {
+        // Más de 3 meses - agrupar por año
+        const ano = fechaEvento.getFullYear();
+        if (!categorias.por_ano[ano]) {
+          categorias.por_ano[ano] = [];
+        }
+        categorias.por_ano[ano].push(eventoFormateado);
+      }
     });
 
-    return res.status(200).json(eventosFormateados);
+    // Ordenar cada categoría por fecha (más reciente primero)
+    categorias.hace_semanas.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
+    categorias.hace_1_mes.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
+    categorias.hace_2_3_meses.sort((a, b) => new Date(b.fechaevento) - new Date(a.fechaevento));
+    
+    // Ordenar años de más reciente a más antiguo
+    const anosOrdenados = Object.keys(categorias.por_ano).sort((a, b) => b - a);
+    const porAnoOrdenado = {};
+    anosOrdenados.forEach(ano => {
+      porAnoOrdenado[ano] = categorias.por_ano[ano].sort(
+        (a, b) => new Date(b.fechaevento) - new Date(a.fechaevento)
+      );
+    });
+
+    return res.status(200).json({
+      resumen: {
+        total: eventos.length,
+        hace_semanas: categorias.hace_semanas.length,
+        hace_1_mes: categorias.hace_1_mes.length,
+        hace_2_3_meses: categorias.hace_2_3_meses.length,
+        por_ano: Object.values(categorias.por_ano).reduce((acc, arr) => acc + arr.length, 0)
+      },
+      categorias: {
+        hace_semanas: categorias.hace_semanas,
+        hace_1_mes: categorias.hace_1_mes,
+        hace_2_3_meses: categorias.hace_2_3_meses,
+        por_ano: porAnoOrdenado
+      }
+    });
+
   } catch (error) {
     console.error('❌ Error en getEventosVencidos:', error);
     return res.status(500).json({ 
