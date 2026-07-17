@@ -18,7 +18,7 @@ const  {
   getEventosAprobadosPorFacultadYFecha,
   getMisInscripciones,
   registrarEventoEstudiante,
- 
+  getEventosVencidos,
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
 const {enviarNotificacionTelegram} = require('../controllers/botController.js');
@@ -32,6 +32,7 @@ router.use((req, res, next) => {
 
 router.get('/pendientes',protect, getEventosNoAprobados);
 router.get('/aprobados',protect, getEventosAprobados);
+router.get('/vencidos',protect, getEventosVencidos);
 router.get('/aprobados-por-facultad',protect, getEventosAprobadosPorFacultad);
 router.get('/aprobados-por-facultad-y-fecha',protect, getEventosAprobadosPorFacultadYFecha);
 router.get('/dashboard/stats', protect, getDashboardStats);

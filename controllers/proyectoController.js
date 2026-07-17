@@ -1336,6 +1336,134 @@ const getEventosAprobados = asyncHandler(async (req, res) => {
     return res.status(500).json({ error: 'Error al cargar eventos aprobados' });
   }
 });
+const getEventosVencidos = asyncHandler(async (req, res) => {
+  const models = getModels();
+  const { Evento, User, Academico, Facultad } = models;
+  
+  try {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Normalizar a medianoche para comparación precisa de fechas
+
+    const userId = req.user.idusuario;
+    const userRole = req.user.role;
+    let eventos = [];
+
+    if (userRole === 'admin' || userRole === 'daf') {
+      // Admin ve todos los eventos aprobados que ya pasaron su fecha
+      eventos = await Evento.findAll({
+        where: { 
+          estado: 'aprobado',
+          fechaevento: { [Op.lt]: hoy } // fechaevento < hoy
+        },
+        attributes: { include: ['idfase'] },
+        include: [
+          {
+            model: User,
+            as: 'academicoCreador',
+            attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat', 'email'],
+            include: [
+              {
+                model: Academico,
+                as: 'academico',
+                attributes: ['facultad_id'],
+                include: [
+                  {
+                    model: Facultad,
+                    as: 'facultad',
+                    attributes: ['nombre_facultad']
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        order: [['fechaevento', 'ASC']] // Los más antiguos primero
+      });
+    } else if (userRole === 'academico') {
+      // Académico ve los eventos vencidos de su facultad o donde es parte del comité
+      const eventosEnComite = await models.sequelize.query(
+        'SELECT idevento FROM comite WHERE idusuario = ?',
+        { replacements: [userId], type: QueryTypes.SELECT }
+      );
+      const idsEventosComite = eventosEnComite.map(r => r.idevento);
+
+      const academicoActual = await Academico.findOne({
+        where: { idusuario: userId },
+        attributes: ['facultad_id']
+      });
+      
+      let idsCreadores = [];
+      if (academicoActual?.facultad_id) {
+        const creadoresMismaFacultad = await Academico.findAll({
+          where: { facultad_id: academicoActual.facultad_id },
+          attributes: ['idusuario']
+        });
+        idsCreadores = creadoresMismaFacultad.map(a => a.idusuario);
+      }
+
+      const condiciones = [];
+      if (idsCreadores.length > 0) {
+        condiciones.push({ idacademico: { [Op.in]: idsCreadores } });
+      }
+      if (idsEventosComite.length > 0) {
+        condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
+      }
+
+      if (condiciones.length > 0) {
+        eventos = await Evento.findAll({
+          where: {
+            estado: 'aprobado',
+            fechaevento: { [Op.lt]: hoy },
+            [Op.or]: condiciones
+          },
+          include: [
+            {
+              model: User,
+              as: 'academicoCreador',
+              attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat']
+            }
+          ],
+          order: [['fechaevento', 'ASC']]
+        });
+      }
+    } else {
+      return res.status(403).json({ message: 'Acceso denegado' });
+    }
+
+    // Formatear la respuesta para que coincida exactamente con lo que espera tu frontend
+    const eventosFormateados = eventos.map(event => {
+      const creador = event.academicoCreador;
+      const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
+      
+      return {
+        idevento: event.idevento,
+        nombreevento: event.nombreevento || 'Sin título',
+        descripcion: event.descripcion || 'Sin descripción',
+        fechaevento: event.fechaevento, // El frontend lo usa para calcular días vencidos
+        horaevento: event.horaevento || 'N/A',
+        lugarevento: event.lugarevento || 'Sin ubicación',
+        estado: event.estado,
+        idfase: event.idfase || null,
+        idacademico: event.idacademico,
+        academico: creador ? {
+          id: creador.idusuario,
+          nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() || 'Académico'
+        } : null,
+        facultad: facultadNombre,
+        created_at: event.created_at,
+        updated_at: event.updated_at
+      };
+    });
+
+    return res.status(200).json(eventosFormateados);
+  } catch (error) {
+    console.error('❌ Error en getEventosVencidos:', error);
+    return res.status(500).json({ 
+      error: 'Error al cargar eventos vencidos', 
+      details: error.message 
+    });
+  }
+});
 const getEventosAprobadosPorFacultad = asyncHandler(async (req, res) => {
   const models = getModels();
   const { Evento, User, Academico, Facultad, Estudiante, Carrera } = models;
@@ -2341,7 +2469,8 @@ module.exports ={
     getEventosAprobadosPorFacultadYFecha,
     registrarEventoEstudiante,
     getMisInscripciones,
-  estudiantesInscritosEnEvento
+  estudiantesInscritosEnEvento,
+  getEventosVencidos
 
     
 }
