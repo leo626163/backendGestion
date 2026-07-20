@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
         model: models.Facultad || models.facultad,
         as: 'facultad' // Ajusta según tu asociación
       }],
-      order: [['nombre', 'ASC']]
+      order: [['nombre_carrera', 'ASC']]
     });
     
     res.json(carreras);
