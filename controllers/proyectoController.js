@@ -1053,7 +1053,7 @@ const rechazarEvento = async (req, res) => {
           attributes: ['idacademico'],
            include: [
             {
-              model: User, 
+              model: models.User, 
               as: 'usuario', // Alias definido en tu modelo Academico.belongsTo(User, { as: 'usuario' })
               attributes: ['nombre', 'apellidopat', 'apellidomat', 'email']
             }
