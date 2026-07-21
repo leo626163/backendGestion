@@ -1042,7 +1042,7 @@ const rechazarEvento = async (req, res) => {
   const { id } = req.params;
   try {
    const models = getModels();
-    const { Evento } = models;
+    const { Evento,User,Academico } = models;
 
 
     const evento = await Evento.findByPk(id, {
@@ -1050,7 +1050,14 @@ const rechazarEvento = async (req, res) => {
         { 
           model: models.Academico, 
           as: 'creador',
-          attributes: ['idacademico', 'nombre', 'apellidopat']
+          attributes: ['idacademico'],
+           include: [
+            {
+              model: User, 
+              as: 'usuario', // Alias definido en tu modelo Academico.belongsTo(User, { as: 'usuario' })
+              attributes: ['nombre', 'apellidopat', 'apellidomat', 'email']
+            }
+          ]
         }
       ]
     });
@@ -1092,7 +1099,11 @@ const rechazarEvento = async (req, res) => {
 
     enviarNotificacionTelegram(eventoParaNotificar, 'rechazado');
 
-    return res.status(200).json({ message: 'Evento rechazado correctamente' });
+    return res.status(200).json({ 
+      message: 'Evento rechazado correctamente',
+      idevento: evento.idevento,
+      estado: 'rechazado' 
+});
   } catch (error) {
     console.error('Error al rechazar evento:', error);
     return res.status(500).json({ error: 'Error al rechazar el evento' });
