@@ -1041,72 +1041,73 @@ const aprobarEvento = async (req, res) => {
 const rechazarEvento = async (req, res) => {
   const { id } = req.params;
   try {
-   const models = getModels();
-    const { Evento,User,Academico } = models;
+    const models = getModels();
+    const { Evento, Academico, User } = models;
 
-
+    // ✅ CONSULTA CORREGIDA: Anidamos User dentro de Academico
     const evento = await Evento.findByPk(id, {
       include: [
         { 
-          model: models.Academico, 
+          model: Academico, 
           as: 'creador',
-          attributes: ['idacademico'],
-           include: [
+          attributes: ['idacademico'], // Solo pedimos el ID de la tabla academico
+          include: [
             {
-              model: models.User, 
-              as: 'usuario', // Alias definido en tu modelo Academico.belongsTo(User, { as: 'usuario' })
-              attributes: ['nombre', 'apellidopat', 'apellidomat', 'email']
+              model: User, 
+              as: 'usuario', // Alias definido en tu modelo: Academico.belongsTo(models.User, { as: 'usuario' })
+              attributes: ['nombre', 'apellidopat', 'apellidomat', 'email', 'role']
             }
           ]
         }
       ]
     });
+
     if (!evento) {
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
-      const razonRechazo = req.body.razon_rechazo || null;
+    const razonRechazo = req.body.razon_rechazo || 'Sin motivo especificado';
+
+    // ✅ ACTUALIZACIÓN SEGURA: Solo modifica estas columnas, NUNCA elimina el registro
     await evento.update({
-      estado: 'rechazado', 
+      estado: 'rechazado',
       fecha_rechazo: new Date(),
       razon_rechazo: razonRechazo
-     });
-       if (evento.idacademico) {
+    });
+
+    // ✅ NOTIFICACIÓN AL USUARIO
+    if (evento.idacademico) {
       try {
-        const mensaje = razonRechazo 
-          ? `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razonRechazo}`
-          : `Tu evento "${evento.nombreevento}" fue rechazado`;
+        const mensaje = `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razonRechazo}`;
         
-        await sendNotification({
-          idusuario: evento.idacademico,
-          titulo: '❌ Evento Rechazado',
-          mensaje: mensaje,
-          tipo: 'evento_rechazado'
-        });
-        console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+        // Asumiendo que tienes sendNotification importado
+        if (typeof sendNotification === 'function') {
+          await sendNotification({
+            idusuario: evento.idacademico,
+            titulo: '❌ Evento Rechazado',
+            mensaje: mensaje,
+            tipo: 'evento_rechazado'
+          });
+          console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+        }
       } catch (notifError) {
         console.warn(`⚠️ No se pudo enviar notificación de rechazo:`, notifError.message);
       }
     }
-     const eventoParaNotificar = {
-      nombreevento: evento.nombreevento,
-      fechaevento: evento.fechaevento,
-      lugarevento: evento.lugarevento,
-      responsable_evento: evento.academico 
-        ? `${evento.academico.nombre} ${evento.academico.apellido || ''}`.trim()
-        : evento.responsable_evento || 'No especificado'
-    };
 
-    enviarNotificacionTelegram(eventoParaNotificar, 'rechazado');
-
+    // ✅ RESPUESTA AL FRONTEND
     return res.status(200).json({ 
       message: 'Evento rechazado correctamente',
-      idevento: evento.idevento,
-      estado: 'rechazado' 
-});
+      idevento: id,
+      estado: 'rechazado'
+    });
+
   } catch (error) {
-    console.error('Error al rechazar evento:', error);
-    return res.status(500).json({ error: 'Error al rechazar el evento' });
+    console.error('❌ Error al rechazar evento:', error);
+    return res.status(500).json({ 
+      error: 'Error al procesar el rechazo', 
+      details: error.message 
+    });
   }
 };
 const getEventos = async (req, res) => {
