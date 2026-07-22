@@ -1352,14 +1352,12 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     const userId = req.user.idusuario;
     const userRole = req.user.role;
     let eventos = [];
+    let academicoActual = null;
 
     if (userRole === 'admin' || userRole === 'daf') {
       eventos = await Evento.findAll({
         where: { 
-          [Op.or]: [
-            { estado: 'aprobado' },
-            { estado: 'pendiente' }
-          ],
+          [Op.or]: [{ estado: 'aprobado' }, { estado: 'pendiente' }],
           fechaevento: { [Op.lt]: hoy }
         },
         attributes: { include: ['idfase', 'razon_rechazo'] },
@@ -1373,13 +1371,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
                 model: Academico,
                 as: 'academico',
                 attributes: ['facultad_id', 'idacademico'],
-                include: [
-                  {
-                    model: Facultad,
-                    as: 'facultad',
-                    attributes: ['nombre_facultad']
-                  }
-                ]
+                include: [{ model: Facultad, as: 'facultad', attributes: ['nombre_facultad'] }]
               }
             ]
           }
@@ -1387,33 +1379,26 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         order: [['fechaevento', 'ASC']]
       });
     } else if (userRole === 'academico') {
-      // 1. Eventos donde soy miembro del comité (usa idusuario, esto está correcto)
+      // 1. Obtener eventos donde soy miembro del comité
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
       );
       const idsEventosComite = eventosEnComite.map(r => r.idevento);
 
-      // 2. Obtener datos del académico actual
-      const academicoActual = await Academico.findOne({
+      // 2. Obtener el idacademico del usuario que inició sesión
+      academicoActual = await Academico.findOne({
         where: { idusuario: userId },
-        attributes: ['facultad_id', 'idacademico']
+        attributes: ['idacademico']
       });
       
-      let idsCreadores = [];
-      if (academicoActual?.facultad_id) {
-        // ✅ CORREGIDO: Obtener 'idacademico' en lugar de 'idusuario'
-        const creadoresMismaFacultad = await Academico.findAll({
-          where: { facultad_id: academicoActual.facultad_id },
-          attributes: ['idacademico'] 
-        });
-        idsCreadores = creadoresMismaFacultad.map(a => a.idacademico);
-      }
-
       const condiciones = [];
-      if (idsCreadores.length > 0) {
-        condiciones.push({ idacademico: { [Op.in]: idsCreadores } });
+      
+      // Solo eventos creados por ESTE académico
+      if (academicoActual) {
+        condiciones.push({ idacademico: academicoActual.idacademico });
       }
+      // O eventos donde soy parte del comité
       if (idsEventosComite.length > 0) {
         condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
       }
@@ -1423,12 +1408,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
           where: {
             fechaevento: { [Op.lt]: hoy },
             [Op.and]: [
-              {
-                [Op.or]: [
-                  { estado: 'aprobado' },
-                  { estado: 'pendiente' }
-                ]
-              },
+              { [Op.or]: [{ estado: 'aprobado' }, { estado: 'pendiente' }] },
               { [Op.or]: condiciones }
             ]
           },
@@ -1437,19 +1417,12 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
               model: User,
               as: 'academicoCreador',
               attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat'],
-              // ✅ CORREGIDO: Agregar includes anidados para poder leer la facultad después
               include: [
                 {
                   model: Academico,
                   as: 'academico',
                   attributes: ['facultad_id', 'idacademico'],
-                  include: [
-                    {
-                      model: Facultad,
-                      as: 'facultad',
-                      attributes: ['nombre_facultad']
-                    }
-                  ]
+                  include: [{ model: Facultad, as: 'facultad', attributes: ['nombre_facultad'] }]
                 }
               ]
             }
@@ -1461,13 +1434,18 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
 
-    // Formatear la respuesta
-    const eventosFormateados = eventos.map(event => {
+    // ✅ AQUÍ ESTÁ LA MAGIA: SEPARAMOS LOS RESULTADOS EN DOS LISTAS
+    const misEventosCreados = [];
+    const eventosDondeSoyComite = [];
+
+    eventos.forEach(event => {
       const creador = event.academicoCreador;
-      // Ahora esto funcionará correctamente gracias al include agregado
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
       
-      return {
+      // Verificamos si el evento fue creado por el usuario actual
+      const esCreador = academicoActual ? (event.idacademico === academicoActual.idacademico) : false;
+
+      const eventoFormateado = {
         idevento: event.idevento,
         nombreevento: event.nombreevento || 'Sin título',
         descripcion: event.descripcion || 'Sin descripción',
@@ -1477,6 +1455,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         estado: event.estado,
         idfase: event.idfase || null,
         idacademico: event.idacademico,
+        esCreador: esCreador, // ✅ Bandera útil para el frontend
         academico: creador ? {
           id: creador.idusuario,
           nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() || 'Académico'
@@ -1485,9 +1464,22 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         created_at: event.created_at,
         updated_at: event.updated_at
       };
+
+      // ✅ Clasificamos en la lista correspondiente
+      if (esCreador) {
+        misEventosCreados.push(eventoFormateado);
+      } else {
+        eventosDondeSoyComite.push(eventoFormateado);
+      }
     });
 
-    return res.status(200).json(eventosFormateados);
+    // ✅ RESPONDEMOS CON DOS ARREGLOS SEPARADOS
+    return res.status(200).json({
+      misEventosCreados,
+      eventosDondeSoyComite,
+      total: eventos.length
+    });
+
   } catch (error) {
     console.error('❌ Error en getEventosVencidos:', error);
     return res.status(500).json({ 
