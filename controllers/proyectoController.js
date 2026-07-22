@@ -1057,10 +1057,14 @@ const rechazarEvento = async (req, res) => {
 
     const razonRechazo = req.body.razon_rechazo || 'Sin motivo especificado';
 
-    // ✅ ACTUALIZACIÓN SEGURA: Solo modifica estas columnas, NUNCA elimina el registro
+     const fechaRechazo = req.body.fecha_rechazo_local 
+      ? req.body.fecha_rechazo_local 
+      : new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+
     await evento.update({
       estado: 'rechazado',
-      fecha_rechazo: new Date(),
+      fecha_rechazo: fechaRechazo,
       razon_rechazo: razonRechazo
     });
 
