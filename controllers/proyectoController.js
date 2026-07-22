@@ -898,87 +898,76 @@ const updateEvento = asyncHandler(async (req, res) => {
   }
 });
 
-const deleteEvento = asyncHandler(async (req, res) => {
-  let models;
-  try {
-    models = getModels();
-  } catch (e) {
-    return res.status(500).json({ message: 'Servidor no listo' });
-  }
-
-  const { Evento } = models;
-  const sequelize = models.sequelize;
+const deleteEvento = async (req, res) => {
   const { id } = req.params;
-  const { razon_rechazo } = req.body;
-
-  if (!id) return res.status(400).json({ message: 'ID de evento requerido' });
-
-  const t = await sequelize.transaction();
   try {
+    const models = getModels();
+    const { Evento, Academico, User } = models;
+
+    // ✅ CONSULTA CORREGIDA: Anidamos User dentro de Academico
     const evento = await Evento.findByPk(id, {
       include: [
         { 
-          model: models.Academico, 
+          model: Academico, 
           as: 'creador',
-          attributes: ['idacademico', 'nombre', 'apellidopat']
+          attributes: ['idacademico'], // Solo pedimos el ID de academico
+          include: [
+            {
+              model: User, 
+              as: 'usuario', // Usamos el alias 'usuario' definido en tu modelo Academico
+              attributes: ['nombre', 'apellidopat', 'apellidomat', 'email', 'role']
+            }
+          ]
         }
-      ],
-      transaction: t
+      ]
     });
+
     if (!evento) {
-      await t.rollback();
-      return res.status(404).json({ message: 'Evento no encontrado' });
+      return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
-    // ✅ Usa las columnas exactas que tiene tu tabla
-    await sequelize.query(
-      `UPDATE evento 
-       SET estado = 'rechazado',
-           fecha_rechazo = NOW(),
-           razon_rechazo = ?,
-           updated_at = NOW()
-       WHERE idevento = ?`,
-      { 
-        replacements: [razon_rechazo || null, id], 
-        transaction: t 
-      }
-    );
+    const razonRechazo = req.body.razon_rechazo || 'Sin motivo especificado';
 
-    await t.commit();
-    console.log(`✅ Evento ${id} rechazado`);
+    // ✅ ACTUALIZACIÓN SEGURA: Solo modifica estas columnas, NUNCA elimina el registro
+    await evento.update({
+      estado: 'rechazado',
+      fecha_rechazo: new Date(),
+      razon_rechazo: razonRechazo
+    });
+
+    // ✅ NOTIFICACIÓN AL USUARIO
     if (evento.idacademico) {
       try {
-        const mensaje = razon_rechazo 
-          ? `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razon_rechazo}`
-          : `Tu evento "${evento.nombreevento}" fue rechazado`;
+        const mensaje = `Tu evento "${evento.nombreevento}" fue rechazado. Motivo: ${razonRechazo}`;
         
-        await sendNotification({
-          idusuario: evento.idacademico,
-          titulo: '❌ Evento Rechazado',
-          mensaje: mensaje,
-          tipo: 'evento_rechazado'
-        });
-        console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+        if (typeof sendNotification === 'function') {
+          await sendNotification({
+            idusuario: evento.idacademico,
+            titulo: '❌ Evento Rechazado',
+            mensaje: mensaje,
+            tipo: 'evento_rechazado'
+          });
+          console.log(`✅ Notificación de rechazo enviada al académico ${evento.idacademico}`);
+        }
       } catch (notifError) {
         console.warn(`⚠️ No se pudo enviar notificación de rechazo:`, notifError.message);
       }
     }
 
-    res.status(200).json({
+    return res.status(200).json({ 
       message: 'Evento rechazado correctamente',
       idevento: id,
       estado: 'rechazado'
     });
 
   } catch (error) {
-    await t.rollback();
     console.error('❌ Error al rechazar evento:', error);
-    res.status(500).json({ 
-      message: 'Error al procesar el rechazo', 
-      error: error.message 
+    return res.status(500).json({ 
+      error: 'Error al procesar el rechazo', 
+      details: error.message 
     });
   }
-});
+};
 const aprobarEvento = async (req, res) => {
   const { id } = req.params;
   try {
