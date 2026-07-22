@@ -1350,13 +1350,16 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     let eventos = [];
 
     if (userRole === 'admin' || userRole === 'daf') {
-      // Admin ve todos los eventos aprobados que ya pasaron su fecha
       eventos = await Evento.findAll({
         where: { 
-          estado: 'aprobado',
-          fechaevento: { [Op.lt]: hoy } // fechaevento < hoy
+          // ✅ Incluye tanto 'aprobado' como 'pendiente' que ya pasaron de fecha
+          [Op.or]: [
+            { estado: 'aprobado' },
+            { estado: 'pendiente' }
+          ],
+          fechaevento: { [Op.lt]: hoy }
         },
-        attributes: { include: ['idfase'] },
+        attributes: { include: ['idfase', 'razon_rechazo'] },
         include: [
           {
             model: User,
@@ -1378,10 +1381,9 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
             ]
           }
         ],
-        order: [['fechaevento', 'ASC']] // Los más antiguos primero
+        order: [['fechaevento', 'ASC']]
       });
     } else if (userRole === 'academico') {
-      // Académico ve los eventos vencidos de su facultad o donde es parte del comité
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
@@ -1413,9 +1415,17 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       if (condiciones.length > 0) {
         eventos = await Evento.findAll({
           where: {
-            estado: 'aprobado',
             fechaevento: { [Op.lt]: hoy },
-            [Op.or]: condiciones
+            // ✅ Combinamos correctamente las condiciones de estado y de usuario
+            [Op.and]: [
+              {
+                [Op.or]: [
+                  { estado: 'aprobado' },
+                  { estado: 'pendiente' }
+                ]
+              },
+              { [Op.or]: condiciones }
+            ]
           },
           include: [
             {
@@ -1430,9 +1440,8 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     } else {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
-    
 
-    // Formatear la respuesta para que coincida exactamente con lo que espera tu frontend
+    // Formatear la respuesta para que coincida con lo que espera tu frontend
     const eventosFormateados = eventos.map(event => {
       const creador = event.academicoCreador;
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
@@ -1441,7 +1450,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         idevento: event.idevento,
         nombreevento: event.nombreevento || 'Sin título',
         descripcion: event.descripcion || 'Sin descripción',
-        fechaevento: event.fechaevento, // El frontend lo usa para calcular días vencidos
+        fechaevento: event.fechaevento,
         horaevento: event.horaevento || 'N/A',
         lugarevento: event.lugarevento || 'Sin ubicación',
         estado: event.estado,
