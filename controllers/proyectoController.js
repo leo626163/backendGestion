@@ -1379,29 +1379,20 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         order: [['fechaevento', 'ASC']]
       });
     } else if (userRole === 'academico') {
-      // 1. Obtener eventos donde soy miembro del comité
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
       );
       const idsEventosComite = eventosEnComite.map(r => r.idevento);
 
-      // 2. Obtener el idacademico del usuario que inició sesión
       academicoActual = await Academico.findOne({
         where: { idusuario: userId },
         attributes: ['idacademico']
       });
       
       const condiciones = [];
-      
-      // Solo eventos creados por ESTE académico
-      if (academicoActual) {
-        condiciones.push({ idacademico: academicoActual.idacademico });
-      }
-      // O eventos donde soy parte del comité
-      if (idsEventosComite.length > 0) {
-        condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
-      }
+      if (academicoActual) condiciones.push({ idacademico: academicoActual.idacademico });
+      if (idsEventosComite.length > 0) condiciones.push({ idevento: { [Op.in]: idsEventosComite } });
 
       if (condiciones.length > 0) {
         eventos = await Evento.findAll({
@@ -1434,7 +1425,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
 
-    // ✅ AQUÍ ESTÁ LA MAGIA: SEPARAMOS LOS RESULTADOS EN DOS LISTAS
+    // ✅ SEPARACIÓN INTELIGENTE SEGÚN EL ROL
     const misEventosCreados = [];
     const eventosDondeSoyComite = [];
 
@@ -1442,8 +1433,10 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       const creador = event.academicoCreador;
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
       
-      // Verificamos si el evento fue creado por el usuario actual
-      const esCreador = academicoActual ? (event.idacademico === academicoActual.idacademico) : false;
+      // Si es admin, consideramos todos los eventos como "propios" para la vista general
+      const esCreador = userRole === 'admin' || userRole === 'daf' 
+        ? true 
+        : (academicoActual ? (event.idacademico === academicoActual.idacademico) : false);
 
       const eventoFormateado = {
         idevento: event.idevento,
@@ -1455,7 +1448,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         estado: event.estado,
         idfase: event.idfase || null,
         idacademico: event.idacademico,
-        esCreador: esCreador, // ✅ Bandera útil para el frontend
+        esCreador: esCreador,
         academico: creador ? {
           id: creador.idusuario,
           nombre: `${creador.nombre || ''} ${creador.apellidopat || ''}`.trim() || 'Académico'
@@ -1465,7 +1458,6 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         updated_at: event.updated_at
       };
 
-      // ✅ Clasificamos en la lista correspondiente
       if (esCreador) {
         misEventosCreados.push(eventoFormateado);
       } else {
@@ -1473,8 +1465,9 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       }
     });
 
-    // ✅ RESPONDEMOS CON DOS ARREGLOS SEPARADOS
+    // ✅ ENVIAMOS EL userRole AL FRONTEND PARA QUE ADAPTE LA UI
     return res.status(200).json({
+      userRole: userRole, 
       misEventosCreados,
       eventosDondeSoyComite,
       total: eventos.length
@@ -1482,10 +1475,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en getEventosVencidos:', error);
-    return res.status(500).json({ 
-      error: 'Error al cargar eventos vencidos', 
-      details: error.message 
-    });
+    return res.status(500).json({ error: 'Error al cargar eventos vencidos', details: error.message });
   }
 });
 const getEventosAprobadosPorFacultad = asyncHandler(async (req, res) => {
