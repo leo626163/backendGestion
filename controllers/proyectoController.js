@@ -1356,7 +1356,6 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
     if (userRole === 'admin' || userRole === 'daf') {
       eventos = await Evento.findAll({
         where: { 
-          // ✅ Incluye tanto 'aprobado' como 'pendiente' que ya pasaron de fecha
           [Op.or]: [
             { estado: 'aprobado' },
             { estado: 'pendiente' }
@@ -1373,7 +1372,7 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
               {
                 model: Academico,
                 as: 'academico',
-                attributes: ['facultad_id'],
+                attributes: ['facultad_id', 'idacademico'],
                 include: [
                   {
                     model: Facultad,
@@ -1388,24 +1387,27 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         order: [['fechaevento', 'ASC']]
       });
     } else if (userRole === 'academico') {
+      // 1. Eventos donde soy miembro del comité (usa idusuario, esto está correcto)
       const eventosEnComite = await models.sequelize.query(
         'SELECT idevento FROM comite WHERE idusuario = ?',
         { replacements: [userId], type: QueryTypes.SELECT }
       );
       const idsEventosComite = eventosEnComite.map(r => r.idevento);
 
+      // 2. Obtener datos del académico actual
       const academicoActual = await Academico.findOne({
         where: { idusuario: userId },
-        attributes: ['facultad_id']
+        attributes: ['facultad_id', 'idacademico']
       });
       
       let idsCreadores = [];
       if (academicoActual?.facultad_id) {
+        // ✅ CORREGIDO: Obtener 'idacademico' en lugar de 'idusuario'
         const creadoresMismaFacultad = await Academico.findAll({
           where: { facultad_id: academicoActual.facultad_id },
-          attributes: ['idusuario']
+          attributes: ['idacademico'] 
         });
-        idsCreadores = creadoresMismaFacultad.map(a => a.idusuario);
+        idsCreadores = creadoresMismaFacultad.map(a => a.idacademico);
       }
 
       const condiciones = [];
@@ -1420,7 +1422,6 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
         eventos = await Evento.findAll({
           where: {
             fechaevento: { [Op.lt]: hoy },
-            // ✅ Combinamos correctamente las condiciones de estado y de usuario
             [Op.and]: [
               {
                 [Op.or]: [
@@ -1435,7 +1436,22 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
             {
               model: User,
               as: 'academicoCreador',
-              attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat']
+              attributes: ['idusuario', 'nombre', 'apellidopat', 'apellidomat'],
+              // ✅ CORREGIDO: Agregar includes anidados para poder leer la facultad después
+              include: [
+                {
+                  model: Academico,
+                  as: 'academico',
+                  attributes: ['facultad_id', 'idacademico'],
+                  include: [
+                    {
+                      model: Facultad,
+                      as: 'facultad',
+                      attributes: ['nombre_facultad']
+                    }
+                  ]
+                }
+              ]
             }
           ],
           order: [['fechaevento', 'ASC']]
@@ -1445,9 +1461,10 @@ const getEventosVencidos = asyncHandler(async (req, res) => {
       return res.status(403).json({ message: 'Acceso denegado' });
     }
 
-    // Formatear la respuesta para que coincida con lo que espera tu frontend
+    // Formatear la respuesta
     const eventosFormateados = eventos.map(event => {
       const creador = event.academicoCreador;
+      // Ahora esto funcionará correctamente gracias al include agregado
       const facultadNombre = creador?.academico?.facultad?.nombre_facultad || 'Sin facultad';
       
       return {
