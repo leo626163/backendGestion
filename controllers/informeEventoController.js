@@ -8,95 +8,122 @@ async function esResponsableDelEvento(evento, usuario) {
   const idResponsable = evento.idusuario_responsable || evento.id_responsable || evento.idacademico || evento.idusuario;
   
   if (idResponsable && Number(idResponsable) === Number(usuario.id)) return true;
-  
   return false;
 }
 
 // GET /eventos/:id/informe
 const getInformeEvento = async (req, res) => {
+  console.log('🔍 [getInformeEvento] Iniciando para evento ID:', req.params.id);
+  console.log('👤 [getInformeEvento] Usuario en req.user:', req.user ? req.user.id : 'NO DEFINIDO');
+  
   try {
-    const { InformeEvento, Evento } = getModels();
+    let models;
+    try {
+      models = getModels();
+      console.log('✅ [getInformeEvento] Modelos cargados correctamente.');
+    } catch (modelError) {
+      console.error('❌ [getInformeEvento] Error cargando modelos:', modelError.message);
+      return res.status(500).json({ message: 'Error cargando modelos de base de datos', error: modelError.message });
+    }
 
+    const { InformeEvento, Evento } = models;
     const idevento = Number(req.params.id);
+    
     if (isNaN(idevento)) {
+      console.warn('⚠️ [getInformeEvento] ID inválido:', req.params.id);
       return res.status(400).json({ message: 'ID de evento inválido' });
     }
 
-    // 1. Obtenemos el evento. Si las asociaciones fallan, lo intentamos sin includes.
+    console.log('🔍 [getInformeEvento] Buscando evento en BD con ID:', idevento);
     let evento;
     try {
-      evento = await Evento.findByPk(idevento, {
-        include: [
-          { model: getModels().Resultados, required: false },
-          { model: getModels().Egresos, required: false },
-          { model: getModels().Ingresos, required: false },
-          { model: getModels().Presupuesto, required: false },
-        ],
-      });
-    } catch (assocError) {
-      console.warn('⚠️ Error en asociaciones de Evento, intentando sin includes:', assocError.message);
+      // Buscamos SIN includes primero para evitar errores de asociaciones rotas
       evento = await Evento.findByPk(idevento);
+      console.log('✅ [getInformeEvento] Evento encontrado:', evento ? 'SÍ' : 'NO');
+    } catch (findError) {
+      console.error('❌ [getInformeEvento] Error en findByPk:', findError.message);
+      return res.status(500).json({ message: 'Error buscando evento', error: findError.message });
     }
 
     if (!evento) {
       return res.status(404).json({ message: 'Evento no encontrado' });
     }
 
-    // 2. Búsqueda segura del informe
-    const informe = await InformeEvento.findOne({ where: { idevento } });
+    // 2. Búsqueda del informe
+    let informe;
+    try {
+      informe = await InformeEvento.findOne({ where: { idevento } });
+      console.log('✅ [getInformeEvento] Informe existente:', informe ? 'SÍ' : 'NO (se devolverá null)');
+    } catch (informeError) {
+      console.error('⚠️ [getInformeEvento] Error buscando informe (se continuará como null):', informeError.message);
+      informe = null;
+    }
 
-    // 3. Extracción defensiva de datos (evita errores si Resultados es undefined o no es un array)
-    const resultados = Array.isArray(evento.Resultados) ? evento.Resultados : (evento.resultados || []);
-    const primerResultado = resultados[0] || {};
+    // 3. Extracción defensiva de datos asociados
+    let resultados = [];
+    let presupuesto = {};
+    let egresos = [];
+    let ingresos = [];
+
+    try {
+      if (evento.getResultados) resultados = await evento.getResultados() || [];
+      if (evento.getPresupuesto) presupuesto = await evento.getPresupuesto() || {};
+      if (evento.getEgresos) egresos = await evento.getEgresos() || [];
+      if (evento.getIngresos) ingresos = await evento.getIngresos() || [];
+    } catch (assocError) {
+      console.warn('⚠️ [getInformeEvento] Error cargando asociaciones, usando datos directos:', assocError.message);
+      resultados = evento.Resultados || evento.resultados || [];
+      presupuesto = evento.Presupuesto || evento.presupuesto || {};
+      egresos = evento.Egresos || evento.egresos || [];
+      ingresos = evento.Ingresos || evento.ingresos || [];
+    }
+
+    const primerResultado = Array.isArray(resultados) && resultados.length > 0 ? resultados[0] : {};
     
-    const presupuesto = evento.Presupuesto || evento.presupuesto || {};
-    const egresos = evento.Egresos || evento.egresos || [];
-    const ingresos = evento.Ingresos || evento.ingresos || [];
-
     const esperado = {
       nombreEvento: evento.nombreevento || evento.nombreEvento,
       lugarEvento: evento.lugarevento || evento.lugarEvento,
       fechaEvento: evento.fechaevento || evento.fechaEvento,
       horaEvento: evento.horaevento || evento.horaEvento,
       responsable: evento.responsable_evento || evento.responsable || null,
-      participacionEsperada: primerResultado.participacion_esperada || null,
-      satisfaccionEsperada: primerResultado.satisfaccion_esperada || null,
-      otrosResultadosEsperados: primerResultado.otros_resultados || null,
+      participacionEsperada: primerResultado?.participacion_esperada || null,
+      satisfaccionEsperada: primerResultado?.satisfaccion_esperada || null,
+      otrosResultadosEsperados: primerResultado?.otros_resultados || null,
       egresosEsperados: egresos,
       ingresosEsperados: ingresos,
-      totalEgresosEsperado: Number(presupuesto.total_egresos || presupuesto.totalEgresos || 0),
-      totalIngresosEsperado: Number(presupuesto.total_ingresos || presupuesto.totalIngresos || 0),
-      balanceEsperado: Number(presupuesto.balance || 0),
+      totalEgresosEsperado: Number(presupuesto?.total_egresos || presupuesto?.totalEgresos || 0),
+      totalIngresosEsperado: Number(presupuesto?.total_ingresos || presupuesto?.totalIngresos || 0),
+      balanceEsperado: Number(presupuesto?.balance || 0),
     };
 
+    console.log('✅ [getInformeEvento] Respuesta enviada con éxito al frontend.');
     return res.json({ esperado, informe });
+    
   } catch (error) {
-    console.error('❌ ERROR CRÍTICO en getInformeEvento:', error);
+    console.error('❌ [getInformeEvento] ERROR CRÍTICO NO CAPTURADO:', error.message);
+    console.error('📜 Stack trace:', error.stack);
     return res.status(500).json({ 
       message: 'Error interno al obtener el informe', 
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Error del servidor' 
+      error: error.message 
     });
   }
 };
 
 // POST /eventos/:id/informe
 const guardarInformeEvento = async (req, res) => {
+  console.log('🔍 [guardarInformeEvento] Iniciando para evento ID:', req.params.id);
   try {
     const { InformeEvento, Evento } = getModels();
-
     const idevento = Number(req.params.id);
-    if (isNaN(idevento)) {
-      return res.status(400).json({ message: 'ID de evento inválido' });
-    }
+    
+    if (isNaN(idevento)) return res.status(400).json({ message: 'ID de evento inválido' });
 
     const evento = await Evento.findByPk(idevento);
-    if (!evento) {
-      return res.status(404).json({ message: 'Evento no encontrado' });
-    }
+    if (!evento) return res.status(404).json({ message: 'Evento no encontrado' });
 
     const puedeEditar = await esResponsableDelEvento(evento, req.user);
     if (!puedeEditar) {
-      console.warn(`⚠️ Intento de edición no autorizada por usuario ID: ${req.user?.id} en evento ${idevento}`);
+      console.warn(`⚠️ [guardarInformeEvento] Intento no autorizado por usuario ID: ${req.user?.id}`);
       return res.status(403).json({ message: 'No tienes permiso para completar el informe de este evento' });
     }
 
@@ -148,8 +175,6 @@ const guardarInformeEvento = async (req, res) => {
       estado: estado === 'finalizado' ? 'finalizado' : 'borrador',
     };
 
-    // REEMPLAZO SEGURO DE UPSERT: findOrCreate + update
-    // Esto evita errores de PostgreSQL con upsert cuando no hay constraints únicos perfectos
     const [informe, creado] = await InformeEvento.findOrCreate({
       where: { idevento },
       defaults: datosInforme
@@ -159,16 +184,14 @@ const guardarInformeEvento = async (req, res) => {
       await informe.update(datosInforme);
     }
 
+    console.log('✅ [guardarInformeEvento] Guardado con éxito.');
     return res.json({ 
       message: creado ? 'Informe creado correctamente' : 'Informe actualizado correctamente', 
       informe 
     });
   } catch (error) {
-    console.error('❌ ERROR CRÍTICO en guardarInformeEvento:', error);
-    return res.status(500).json({ 
-      message: 'Error interno al guardar el informe', 
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Error del servidor' 
-    });
+    console.error('❌ [guardarInformeEvento] ERROR CRÍTICO:', error.message);
+    return res.status(500).json({ message: 'Error interno al guardar el informe', error: error.message });
   }
 };
 
