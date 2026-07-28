@@ -22,7 +22,8 @@ const  {
   //getEventosPendientesPorArea
   } = require('../controllers/proyectoController.js');
 const {enviarNotificacionTelegram} = require('../controllers/botController.js');
-  const  {protect,authorize,protect1} = require('../middleware/authMiddleware.js');
+const  {protect,authorize,protect1} = require('../middleware/authMiddleware.js');
+const { getInformeEvento,guardarInformeEvento } = require('../controllers/informeEventoController.js');
 const router = express.Router();
 
 router.use((req, res, next) => {
@@ -53,6 +54,9 @@ router.post('/',protect, createEvento);
 router.get('/con-facultad', getEventos);
 router.get('/', getAllEventos);
 router.get('/:id',protect, getEventoById);
+
+router.get('/eventos/:id/informe', protect, getInformeEvento);
+router.post('/eventos/:id/informe', protect, guardarInformeEvento);
 //router.get('/mios/aprobados',protect, getAprobados);
 
 
