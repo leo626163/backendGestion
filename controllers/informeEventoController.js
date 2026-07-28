@@ -1,47 +1,75 @@
 const { getModels } = require('../models/index.js');
 
-async function esResponsableDelEvento(evento, usuario) {
-  if (!usuario) return false;
-  if (usuario.role === 'admin') return true;
+async function esResponsableDelEvento(evento, usuario, models) {
+  console.log('🔍 [esResponsableDelEvento] Verificando permisos...');
+  console.log('   👤 Usuario:', usuario ? { id: usuario.idusuario, role: usuario.role } : 'NO DEFINIDO');
   
-  // Flexibilidad por si el nombre de la columna varía en tu base de datos
-  const idResponsable = evento.idusuario_responsable || evento.id_responsable || evento.idacademico || evento.idusuario;
+  if (!usuario) {
+    console.log('   ❌ Denegado: No hay usuario en req.user');
+    return false;
+  }
   
-  if (idResponsable && Number(idResponsable) === Number(usuario.id)) return true;
+  if (usuario.role === 'admin') {
+    console.log('   ✅ Concedido: El usuario tiene rol de admin');
+    return true;
+  }
+  
+  const idacademicoDelEvento = evento.idacademico;
+  console.log(`   📌 idacademico del evento: ${idacademicoDelEvento}`);
+  console.log(`   🆔 idusuario del usuario actual: ${usuario.idusuario}`);
+  
+  if (!idacademicoDelEvento) {
+    console.log('   ❌ Denegado: El evento no tiene idacademico asignado');
+    return false;
+  }
+  
+  // Buscamos el registro en la tabla Academico para ver si coincide
+  const { Academico } = models;
+  const registroAcademico = await Academico.findOne({
+    where: { idacademico: idacademicoDelEvento }
+  });
+  
+  if (!registroAcademico) {
+    console.log('   ❌ Denegado: No se encontró el registro en tabla academico');
+    return false;
+  }
+  
+  console.log(`   🔗 idusuario vinculado a ese idacademico: ${registroAcademico.idusuario}`);
+  
+  // Comparamos: el idusuario del token vs el idusuario vinculado al academico
+  if (registroAcademico.idusuario && Number(registroAcademico.idusuario) === Number(usuario.idusuario)) {
+    console.log('   ✅ Concedido: El usuario es el responsable del evento');
+    return true;
+  }
+  
+  console.log(`   ❌ Denegado: El usuario NO es el responsable`);
   return false;
 }
 
 // GET /eventos/:id/informe
 const getInformeEvento = async (req, res) => {
   console.log('🔍 [getInformeEvento] Iniciando para evento ID:', req.params.id);
-  console.log('👤 [getInformeEvento] Usuario en req.user:', req.user ? req.user.id : 'NO DEFINIDO');
-  
   try {
     let models;
     try {
       models = getModels();
-      console.log('✅ [getInformeEvento] Modelos cargados correctamente.');
     } catch (modelError) {
-      console.error('❌ [getInformeEvento] Error cargando modelos:', modelError.message);
-      return res.status(500).json({ message: 'Error cargando modelos de base de datos', error: modelError.message });
+      console.error('❌ Error cargando modelos:', modelError.message);
+      return res.status(500).json({ message: 'Error cargando modelos', error: modelError.message });
     }
 
     const { InformeEvento, Evento } = models;
     const idevento = Number(req.params.id);
     
     if (isNaN(idevento)) {
-      console.warn('⚠️ [getInformeEvento] ID inválido:', req.params.id);
       return res.status(400).json({ message: 'ID de evento inválido' });
     }
 
-    console.log('🔍 [getInformeEvento] Buscando evento en BD con ID:', idevento);
     let evento;
     try {
-      // Buscamos SIN includes primero para evitar errores de asociaciones rotas
       evento = await Evento.findByPk(idevento);
-      console.log('✅ [getInformeEvento] Evento encontrado:', evento ? 'SÍ' : 'NO');
     } catch (findError) {
-      console.error('❌ [getInformeEvento] Error en findByPk:', findError.message);
+      console.error('❌ Error en findByPk:', findError.message);
       return res.status(500).json({ message: 'Error buscando evento', error: findError.message });
     }
 
@@ -49,17 +77,14 @@ const getInformeEvento = async (req, res) => {
       return res.status(404).json({ message: 'Evento no encontrado' });
     }
 
-    // 2. Búsqueda del informe
     let informe;
     try {
       informe = await InformeEvento.findOne({ where: { idevento } });
-      console.log('✅ [getInformeEvento] Informe existente:', informe ? 'SÍ' : 'NO (se devolverá null)');
     } catch (informeError) {
-      console.error('⚠️ [getInformeEvento] Error buscando informe (se continuará como null):', informeError.message);
+      console.warn('⚠️ Error buscando informe:', informeError.message);
       informe = null;
     }
 
-    // 3. Extracción defensiva de datos asociados
     let resultados = [];
     let presupuesto = {};
     let egresos = [];
@@ -71,7 +96,6 @@ const getInformeEvento = async (req, res) => {
       if (evento.getEgresos) egresos = await evento.getEgresos() || [];
       if (evento.getIngresos) ingresos = await evento.getIngresos() || [];
     } catch (assocError) {
-      console.warn('⚠️ [getInformeEvento] Error cargando asociaciones, usando datos directos:', assocError.message);
       resultados = evento.Resultados || evento.resultados || [];
       presupuesto = evento.Presupuesto || evento.presupuesto || {};
       egresos = evento.Egresos || evento.egresos || [];
@@ -96,24 +120,18 @@ const getInformeEvento = async (req, res) => {
       balanceEsperado: Number(presupuesto?.balance || 0),
     };
 
-    console.log('✅ [getInformeEvento] Respuesta enviada con éxito al frontend.');
     return res.json({ esperado, informe });
-    
   } catch (error) {
-    console.error('❌ [getInformeEvento] ERROR CRÍTICO NO CAPTURADO:', error.message);
-    console.error('📜 Stack trace:', error.stack);
-    return res.status(500).json({ 
-      message: 'Error interno al obtener el informe', 
-      error: error.message 
-    });
+    console.error('❌ ERROR CRÍTICO en getInformeEvento:', error.message);
+    return res.status(500).json({ message: 'Error interno', error: error.message });
   }
 };
 
-// POST /eventos/:id/informe
 const guardarInformeEvento = async (req, res) => {
-  console.log('🔍 [guardarInformeEvento] Iniciando para evento ID:', req.params.id);
+  console.log(' [guardarInformeEvento] Iniciando guardado para evento ID:', req.params.id);
   try {
-    const { InformeEvento, Evento } = getModels();
+    const models = getModels();
+    const { InformeEvento, Evento } = models;
     const idevento = Number(req.params.id);
     
     if (isNaN(idevento)) return res.status(400).json({ message: 'ID de evento inválido' });
@@ -121,10 +139,10 @@ const guardarInformeEvento = async (req, res) => {
     const evento = await Evento.findByPk(idevento);
     if (!evento) return res.status(404).json({ message: 'Evento no encontrado' });
 
-    const puedeEditar = await esResponsableDelEvento(evento, req.user);
+    // PASAMOS LOS MODELOS A LA FUNCIÓN
+    const puedeEditar = await esResponsableDelEvento(evento, req.user, models);
     if (!puedeEditar) {
-      console.warn(`⚠️ [guardarInformeEvento] Intento no autorizado por usuario ID: ${req.user?.id}`);
-      return res.status(403).json({ message: 'No tienes permiso para completar el informe de este evento' });
+      return res.status(403).json({ message: 'No tienes permiso para completar el informe. Solo el responsable o admin pueden hacerlo.' });
     }
 
     const {
@@ -190,8 +208,8 @@ const guardarInformeEvento = async (req, res) => {
       informe 
     });
   } catch (error) {
-    console.error('❌ [guardarInformeEvento] ERROR CRÍTICO:', error.message);
-    return res.status(500).json({ message: 'Error interno al guardar el informe', error: error.message });
+    console.error('❌ ERROR CRÍTICO en guardarInformeEvento:', error.message);
+    return res.status(500).json({ message: 'Error interno al guardar', error: error.message });
   }
 };
 
