@@ -55,8 +55,8 @@ router.get('/con-facultad', getEventos);
 router.get('/', getAllEventos);
 router.get('/:id',protect, getEventoById);
 
-router.get('/eventos/:id/informe', protect, getInformeEvento);
-router.post('/eventos/:id/informe', protect, guardarInformeEvento);
+router.get('/:id/informe', protect, getInformeEvento);
+router.post('/:id/informe', protect, guardarInformeEvento);
 //router.get('/mios/aprobados',protect, getAprobados);
 
 

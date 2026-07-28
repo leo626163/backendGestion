@@ -136,6 +136,7 @@ const initModels = async () => {
     'Egreso.js',
     'Message.js',
     'ChatMensaje.js',
+    'InformeEvento.js',
 
   ];
 
