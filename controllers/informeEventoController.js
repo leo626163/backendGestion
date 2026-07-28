@@ -157,29 +157,22 @@ const getInformeEvento = async (req, res) => {
 // POST /eventos/:id/informe
 const guardarInformeEvento = async (req, res) => {
   console.log('💾 [guardarInformeEvento] Iniciando guardado para evento ID:', req.params.id);
+  
   try {
     const models = getModels();
-    const { Evento, Resultado } = models;
+    const { InformeEvento, Evento, Resultado, Egreso, Ingreso, Presupuesto } = models;
     const idevento = Number(req.params.id);
     
-    if (isNaN(idevento)) {
-      return res.status(400).json({ message: 'ID de evento inválido' });
-    }
+    if (isNaN(idevento)) return res.status(400).json({ message: 'ID de evento inválido' });
 
     const evento = await Evento.findByPk(idevento);
-    if (!evento) {
-      return res.status(404).json({ message: 'Evento no encontrado' });
-    }
+    if (!evento) return res.status(404).json({ message: 'Evento no encontrado' });
 
-    // Verificar permisos
     const puedeEditar = await esResponsableDelEvento(evento, req.user, models);
     if (!puedeEditar) {
-      return res.status(403).json({ 
-        message: 'No tienes permiso para completar el informe. Solo el responsable o admin pueden hacerlo.' 
-      });
+      return res.status(403).json({ message: 'No tienes permiso para completar el informe.' });
     }
 
-    // Extraer datos del body
     const {
       segmento_alcanzado_estudiantes, segmento_alcanzado_docentes,
       segmento_alcanzado_publico_externo, segmento_alcanzado_influencers,
@@ -192,46 +185,173 @@ const guardarInformeEvento = async (req, res) => {
       lecciones_aprendidas, estado
     } = req.body;
 
-    // Datos a guardar en la tabla resultado
-    const datosResultado = {
+    const egresosArr = Array.isArray(egresos_reales) ? egresos_reales : [];
+    const ingresosArr = Array.isArray(ingresos_reales) ? ingresos_reales : [];
+    
+    const totalEgresosReal = egresosArr.reduce((sum, e) => sum + (Number(e.total) || 0), 0);
+    const totalIngresosReal = ingresosArr.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
+    const balanceReal = totalIngresosReal - totalEgresosReal;
+
+    // 1. GUARDAR DATOS GENERALES DEL INFORME
+    const datosInforme = {
       idevento,
-      // Segmentos alcanzados (los guardamos como JSON en otros_resultados_real si no hay columna específica)
+      segmento_alcanzado_estudiantes: Number(segmento_alcanzado_estudiantes) || 0,
+      segmento_alcanzado_docentes: Number(segmento_alcanzado_docentes) || 0,
+      segmento_alcanzado_publico_externo: Number(segmento_alcanzado_publico_externo) || 0,
+      segmento_alcanzado_influencers: Number(segmento_alcanzado_influencers) || 0,
+      segmento_alcanzado_otro_cual: segmento_alcanzado_otro_cual || null,
+      segmento_alcanzado_otro_cantidad: Number(segmento_alcanzado_otro_cantidad) || 0,
+      objetivo_alcanzado_modelo_pedagogico: !!objetivo_alcanzado_modelo_pedagogico,
+      objetivo_alcanzado_posicionamiento: !!objetivo_alcanzado_posicionamiento,
+      objetivo_alcanzado_internacionalizacion: !!objetivo_alcanzado_internacionalizacion,
+      objetivo_alcanzado_rsu: !!objetivo_alcanzado_rsu,
+      objetivo_alcanzado_fidelizacion: !!objetivo_alcanzado_fidelizacion,
+      objetivo_alcanzado_otro_cual: objetivo_alcanzado_otro_cual || null,
       participacion_real: participacion_real || null,
-      satisfaccion_real: indice_satisfaccion_real || null,
+      indice_satisfaccion_real: indice_satisfaccion_real || null,
       otros_resultados_real: otros_resultados_real || null,
-      // NUEVOS CAMPOS
-      info_prensa: info_prensa || null,
-      analisis_desviaciones: analisis_desviaciones || null,
-      lecciones_aprendidas: lecciones_aprendidas || null,
+      total_egresos_real: totalEgresosReal,
+      total_ingresos_real: totalIngresosReal,
+      balance_real: balanceReal,
+      idacademico: req.user.idacademico || evento.idacademico,
       estado: estado === 'finalizado' ? 'finalizado' : 'borrador',
     };
 
-    // Buscar si ya existe un resultado para este evento
-    let resultado = await Resultado.findOne({ where: { idevento } });
-    let creado = false;
+    const [informe, creado] = await InformeEvento.findOrCreate({
+      where: { idevento },
+      defaults: datosInforme
+    });
 
-    if (!resultado) {
-      // Crear nuevo registro
-      resultado = await Resultado.create(datosResultado);
-      creado = true;
-      console.log('✅ Resultado creado nuevo');
-    } else {
-      // Actualizar registro existente
-      await resultado.update(datosResultado);
-      console.log('✅ Resultado actualizado');
+    if (!creado) {
+      await informe.update(datosInforme);
     }
 
+    // 2. GUARDAR LOS 3 CAMPOS DE TEXTO EN RESULTADO
+    const datosResultado = {
+      idevento,
+      info_prensa: info_prensa || null,
+      analisis_desviaciones: analisis_desviaciones || null,
+      lecciones_aprendidas: lecciones_aprendidas || null,
+    };
+
+    const [resultado, resultadoCreado] = await Resultado.findOrCreate({
+      where: { idevento },
+      defaults: datosResultado
+    });
+
+    if (!resultadoCreado) {
+      await resultado.update(datosResultado);
+    }
+
+    // 3. 🔄 ACTUALIZAR EGRESOS (conservando datos originales)
+    console.log(`💰 Actualizando ${egresosArr.length} egresos con datos reales...`);
+    
+    // Obtener el idpresupuesto del evento
+    const presupuesto = await Presupuesto.findOne({ where: { idevento } });
+    const idpresupuesto = presupuesto ? presupuesto.idpresupuesto : null;
+
+    if (idpresupuesto) {
+      // Obtener todos los egresos existentes de este presupuesto
+      const egresosExistentes = await Egreso.findAll({ 
+        where: { idpresupuesto },
+        order: [['idegreso', 'ASC']]
+      });
+
+      console.log(`   📋 Encontrados ${egresosExistentes.length} egresos existentes`);
+
+      // Actualizar cada egreso existente con los campos _real
+      for (let i = 0; i < egresosExistentes.length; i++) {
+        const egresoDB = egresosExistentes[i];
+        const egresoForm = egresosArr[i];
+
+        if (egresoForm) {
+          await egresoDB.update({
+            descripcion_real: egresoForm.descripcion || null,
+            cantidad_real: parseInt(egresoForm.cantidad) || 0,
+            precio_unitario_real: parseFloat(egresoForm.precio_unitario) || 0,
+            total_real: parseFloat(egresoForm.total) || 0,
+          });
+          console.log(`   ✅ Egreso ${egresoDB.idegreso} actualizado`);
+        }
+      }
+
+      // Si hay más egresos en el formulario que en la BD, crearlos
+      for (let i = egresosExistentes.length; i < egresosArr.length; i++) {
+        const egresoForm = egresosArr[i];
+        if (egresoForm && (egresoForm.descripcion || egresoForm.total)) {
+          await Egreso.create({
+            idpresupuesto: idpresupuesto,
+            descripcion: egresoForm.descripcion || null,
+            cantidad: parseInt(egresoForm.cantidad) || 0,
+            precio_unitario: parseFloat(egresoForm.precio_unitario) || 0,
+            total: parseFloat(egresoForm.total) || 0,
+            descripcion_real: egresoForm.descripcion || null,
+            cantidad_real: parseInt(egresoForm.cantidad) || 0,
+            precio_unitario_real: parseFloat(egresoForm.precio_unitario) || 0,
+            total_real: parseFloat(egresoForm.total) || 0,
+          });
+          console.log(`   ➕ Egreso nuevo creado`);
+        }
+      }
+    }
+
+    // 4. 🔄 ACTUALIZAR INGRESOS (conservando datos originales)
+    console.log(`💵 Actualizando ${ingresosArr.length} ingresos con datos reales...`);
+
+    if (idpresupuesto) {
+      // Obtener todos los ingresos existentes de este presupuesto
+      const ingresosExistentes = await Ingreso.findAll({ 
+        where: { idpresupuesto },
+        order: [['idingreso', 'ASC']]
+      });
+
+      console.log(`   📋 Encontrados ${ingresosExistentes.length} ingresos existentes`);
+
+      // Actualizar cada ingreso existente con los campos _real
+      for (let i = 0; i < ingresosExistentes.length; i++) {
+        const ingresoDB = ingresosExistentes[i];
+        const ingresoForm = ingresosArr[i];
+
+        if (ingresoForm) {
+          await ingresoDB.update({
+            descripcion_real: ingresoForm.descripcion || null,
+            cantidad_real: parseInt(ingresoForm.cantidad) || 0,
+            precio_unitario_real: parseFloat(ingresoForm.precio_unitario) || 0,
+            total_real: parseFloat(ingresoForm.total) || 0,
+          });
+          console.log(`   ✅ Ingreso ${ingresoDB.idingreso} actualizado`);
+        }
+      }
+
+      // Si hay más ingresos en el formulario que en la BD, crearlos
+      for (let i = ingresosExistentes.length; i < ingresosArr.length; i++) {
+        const ingresoForm = ingresosArr[i];
+        if (ingresoForm && (ingresoForm.descripcion || ingresoForm.total)) {
+          await Ingreso.create({
+            idpresupuesto: idpresupuesto,
+            descripcion: ingresoForm.descripcion || null,
+            cantidad: parseInt(ingresoForm.cantidad) || 0,
+            precio_unitario: parseFloat(ingresoForm.precio_unitario) || 0,
+            total: parseFloat(ingresoForm.total) || 0,
+            descripcion_real: ingresoForm.descripcion || null,
+            cantidad_real: parseInt(ingresoForm.cantidad) || 0,
+            precio_unitario_real: parseFloat(ingresoForm.precio_unitario) || 0,
+            total_real: parseFloat(ingresoForm.total) || 0,
+          });
+          console.log(`   ➕ Ingreso nuevo creado`);
+        }
+      }
+    }
+
+    console.log('✅ [guardarInformeEvento] Todo guardado con éxito');
     return res.json({ 
       message: creado ? 'Informe creado correctamente' : 'Informe actualizado correctamente', 
-      informe: resultado 
+      informe 
     });
   } catch (error) {
-    console.error('❌ ERROR en guardarInformeEvento:', error.message);
+    console.error('❌ ERROR CRÍTICO en guardarInformeEvento:', error.message);
     console.error('Stack:', error.stack);
-    return res.status(500).json({ 
-      message: 'Error interno al guardar el informe', 
-      error: error.message 
-    });
+    return res.status(500).json({ message: 'Error interno al guardar', error: error.message });
   }
 };
 
