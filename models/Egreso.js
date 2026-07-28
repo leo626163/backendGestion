@@ -29,7 +29,24 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 0,
     },
-  }, {
+    descripcion_real: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    cantidad_real: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+  },
+    precio_unitario_real: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
+    total_real: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
     tableName: 'egreso',
     timestamps: false,
   });

@@ -2,7 +2,6 @@ const { getModels } = require('../models/index.js');
 
 async function esResponsableDelEvento(evento, usuario, models) {
   console.log('🔍 [esResponsableDelEvento] Verificando permisos...');
-  console.log('   👤 Usuario:', usuario ? { id: usuario.idusuario, role: usuario.role } : 'NO DEFINIDO');
   
   if (!usuario) {
     console.log('   ❌ Denegado: No hay usuario en req.user');
@@ -15,15 +14,14 @@ async function esResponsableDelEvento(evento, usuario, models) {
   }
   
   const idacademicoDelEvento = evento.idacademico;
-  console.log(`   📌 idacademico del evento: ${idacademicoDelEvento}`);
-  console.log(`   🆔 idusuario del usuario actual: ${usuario.idusuario}`);
+  console.log(`    idacademico del evento: ${idacademicoDelEvento}`);
+  console.log(`   🆔 idusuario del usuario actual: ${usuario.idusuario || usuario.id}`);
   
   if (!idacademicoDelEvento) {
     console.log('   ❌ Denegado: El evento no tiene idacademico asignado');
     return false;
   }
   
-  // Buscamos el registro en la tabla Academico para ver si coincide
   const { Academico } = models;
   const registroAcademico = await Academico.findOne({
     where: { idacademico: idacademicoDelEvento }
@@ -36,8 +34,8 @@ async function esResponsableDelEvento(evento, usuario, models) {
   
   console.log(`   🔗 idusuario vinculado a ese idacademico: ${registroAcademico.idusuario}`);
   
-  // Comparamos: el idusuario del token vs el idusuario vinculado al academico
-  if (registroAcademico.idusuario && Number(registroAcademico.idusuario) === Number(usuario.idusuario)) {
+  const userIdActual = usuario.idusuario || usuario.id;
+  if (registroAcademico.idusuario && Number(registroAcademico.idusuario) === Number(userIdActual)) {
     console.log('   ✅ Concedido: El usuario es el responsable del evento');
     return true;
   }
@@ -50,101 +48,85 @@ async function esResponsableDelEvento(evento, usuario, models) {
 const getInformeEvento = async (req, res) => {
   console.log('🔍 [getInformeEvento] Iniciando para evento ID:', req.params.id);
   try {
-    let models;
-    try {
-      models = getModels();
-    } catch (modelError) {
-      console.error('❌ Error cargando modelos:', modelError.message);
-      return res.status(500).json({ message: 'Error cargando modelos', error: modelError.message });
-    }
-
-    const { InformeEvento, Evento } = models;
+    const models = getModels();
+    const { Evento, Resultado, Egreso, Ingreso, Presupuesto } = models;
     const idevento = Number(req.params.id);
     
     if (isNaN(idevento)) {
       return res.status(400).json({ message: 'ID de evento inválido' });
     }
 
-    let evento;
-    try {
-      evento = await Evento.findByPk(idevento);
-    } catch (findError) {
-      console.error('❌ Error en findByPk:', findError.message);
-      return res.status(500).json({ message: 'Error buscando evento', error: findError.message });
-    }
-
+    // Buscar el evento
+    const evento = await Evento.findByPk(idevento);
     if (!evento) {
       return res.status(404).json({ message: 'Evento no encontrado' });
     }
 
-    let informe;
+    // Buscar el resultado asociado al evento (si existe)
+    let resultado;
     try {
-      informe = await InformeEvento.findOne({ where: { idevento } });
-    } catch (informeError) {
-      console.warn('⚠️ Error buscando informe:', informeError.message);
-      informe = null;
+      resultado = await Resultado.findOne({ where: { idevento } });
+    } catch (err) {
+      console.warn('️ No se pudo buscar resultado:', err.message);
+      resultado = null;
     }
 
-    let resultados = [];
-    let presupuesto = {};
-    let egresos = [];
-    let ingresos = [];
-
-    try {
-      if (evento.getResultados) resultados = await evento.getResultados() || [];
-      if (evento.getPresupuesto) presupuesto = await evento.getPresupuesto() || {};
-      if (evento.getEgresos) egresos = await evento.getEgresos() || [];
-      if (evento.getIngresos) ingresos = await evento.getIngresos() || [];
-    } catch (assocError) {
-      resultados = evento.Resultados || evento.resultados || [];
-      presupuesto = evento.Presupuesto || evento.presupuesto || {};
-      egresos = evento.Egresos || evento.egresos || [];
-      ingresos = evento.Ingresos || evento.ingresos || [];
-    }
-
-    const primerResultado = Array.isArray(resultados) && resultados.length > 0 ? resultados[0] : {};
-    
+    // Datos "esperados" del evento
     const esperado = {
-      nombreEvento: evento.nombreevento || evento.nombreEvento,
-      lugarEvento: evento.lugarevento || evento.lugarEvento,
-      fechaEvento: evento.fechaevento || evento.fechaEvento,
-      horaEvento: evento.horaevento || evento.horaEvento,
-      responsable: evento.responsable_evento || evento.responsable || null,
-      participacionEsperada: primerResultado?.participacion_esperada || null,
-      satisfaccionEsperada: primerResultado?.satisfaccion_esperada || null,
-      otrosResultadosEsperados: primerResultado?.otros_resultados || null,
-      egresosEsperados: egresos,
-      ingresosEsperados: ingresos,
-      totalEgresosEsperado: Number(presupuesto?.total_egresos || presupuesto?.totalEgresos || 0),
-      totalIngresosEsperado: Number(presupuesto?.total_ingresos || presupuesto?.totalIngresos || 0),
-      balanceEsperado: Number(presupuesto?.balance || 0),
+      nombreEvento: evento.nombreevento,
+      lugarEvento: evento.lugarevento,
+      fechaEvento: evento.fechaevento,
+      horaEvento: evento.horaevento,
+      responsable: evento.responsable_evento || null,
+      participacionEsperada: resultado?.participacion_esperada || null,
+      satisfaccionEsperada: resultado?.satisfaccion_esperada || null,
+      otrosResultadosEsperados: resultado?.otros_resultados || null,
     };
+
+    // El "informe" son los campos reales del resultado
+    const informe = resultado ? {
+      participacion_real: resultado.participacion_real || null,
+      indice_satisfaccion_real: resultado.satisfaccion_real || null,
+      otros_resultados_real: resultado.otros_resultados_real || null,
+      info_prensa: resultado.info_prensa || null,
+      analisis_desviaciones: resultado.analisis_desviaciones || null,
+      lecciones_aprendidas: resultado.lecciones_aprendidas || null,
+      estado: resultado.estado || 'borrador',
+    } : null;
 
     return res.json({ esperado, informe });
   } catch (error) {
-    console.error('❌ ERROR CRÍTICO en getInformeEvento:', error.message);
+    console.error('❌ ERROR en getInformeEvento:', error.message);
     return res.status(500).json({ message: 'Error interno', error: error.message });
   }
 };
 
+// POST /eventos/:id/informe
 const guardarInformeEvento = async (req, res) => {
-  console.log(' [guardarInformeEvento] Iniciando guardado para evento ID:', req.params.id);
+  console.log('💾 [guardarInformeEvento] Iniciando guardado para evento ID:', req.params.id);
   try {
     const models = getModels();
-    const { InformeEvento, Evento } = models;
+    const { Evento, Resultado } = models;
     const idevento = Number(req.params.id);
     
-    if (isNaN(idevento)) return res.status(400).json({ message: 'ID de evento inválido' });
-
-    const evento = await Evento.findByPk(idevento);
-    if (!evento) return res.status(404).json({ message: 'Evento no encontrado' });
-
-    // PASAMOS LOS MODELOS A LA FUNCIÓN
-    const puedeEditar = await esResponsableDelEvento(evento, req.user, models);
-    if (!puedeEditar) {
-      return res.status(403).json({ message: 'No tienes permiso para completar el informe. Solo el responsable o admin pueden hacerlo.' });
+    if (isNaN(idevento)) {
+      return res.status(400).json({ message: 'ID de evento inválido' });
     }
 
+    const evento = await Evento.findByPk(idevento);
+    if (!evento) {
+      return res.status(404).json({ message: 'Evento no encontrado' });
+    }
+
+    // Verificar permisos
+    const puedeEditar = await esResponsableDelEvento(evento, req.user, models);
+    if (!puedeEditar) {
+      return res.status(403).json({ 
+        message: 'No tienes permiso para completar el informe. Solo el responsable o admin pueden hacerlo.' 
+      });
+    }
+
+    // Extraer datos del body
     const {
       segmento_alcanzado_estudiantes, segmento_alcanzado_docentes,
       segmento_alcanzado_publico_externo, segmento_alcanzado_influencers,
@@ -157,59 +139,46 @@ const guardarInformeEvento = async (req, res) => {
       lecciones_aprendidas, estado
     } = req.body;
 
-    const egresosArr = Array.isArray(egresos_reales) ? egresos_reales : [];
-    const ingresosArr = Array.isArray(ingresos_reales) ? ingresos_reales : [];
-    
-    const totalEgresosReal = egresosArr.reduce((sum, e) => sum + (Number(e.total) || 0), 0);
-    const totalIngresosReal = ingresosArr.reduce((sum, i) => sum + (Number(i.total) || 0), 0);
-    const balanceReal = totalIngresosReal - totalEgresosReal;
-
-    const datosInforme = {
+    // Datos a guardar en la tabla resultado
+    const datosResultado = {
       idevento,
-      segmento_alcanzado_estudiantes: Number(segmento_alcanzado_estudiantes) || 0,
-      segmento_alcanzado_docentes: Number(segmento_alcanzado_docentes) || 0,
-      segmento_alcanzado_publico_externo: Number(segmento_alcanzado_publico_externo) || 0,
-      segmento_alcanzado_influencers: Number(segmento_alcanzado_influencers) || 0,
-      segmento_alcanzado_otro_cual: segmento_alcanzado_otro_cual || null,
-      segmento_alcanzado_otro_cantidad: Number(segmento_alcanzado_otro_cantidad) || 0,
-      objetivo_alcanzado_modelo_pedagogico: !!objetivo_alcanzado_modelo_pedagogico,
-      objetivo_alcanzado_posicionamiento: !!objetivo_alcanzado_posicionamiento,
-      objetivo_alcanzado_internacionalizacion: !!objetivo_alcanzado_internacionalizacion,
-      objetivo_alcanzado_rsu: !!objetivo_alcanzado_rsu,
-      objetivo_alcanzado_fidelizacion: !!objetivo_alcanzado_fidelizacion,
-      objetivo_alcanzado_otro_cual: objetivo_alcanzado_otro_cual || null,
+      // Segmentos alcanzados (los guardamos como JSON en otros_resultados_real si no hay columna específica)
       participacion_real: participacion_real || null,
-      indice_satisfaccion_real: indice_satisfaccion_real || null,
+      satisfaccion_real: indice_satisfaccion_real || null,
       otros_resultados_real: otros_resultados_real || null,
-      egresos_reales: egresosArr,
-      ingresos_reales: ingresosArr,
-      total_egresos_real: totalEgresosReal,
-      total_ingresos_real: totalIngresosReal,
-      balance_real: balanceReal,
+      // NUEVOS CAMPOS
       info_prensa: info_prensa || null,
       analisis_desviaciones: analisis_desviaciones || null,
       lecciones_aprendidas: lecciones_aprendidas || null,
-      idusuario_responsable: req.user.id,
       estado: estado === 'finalizado' ? 'finalizado' : 'borrador',
     };
 
-    const [informe, creado] = await InformeEvento.findOrCreate({
-      where: { idevento },
-      defaults: datosInforme
-    });
+    // Buscar si ya existe un resultado para este evento
+    let resultado = await Resultado.findOne({ where: { idevento } });
+    let creado = false;
 
-    if (!creado) {
-      await informe.update(datosInforme);
+    if (!resultado) {
+      // Crear nuevo registro
+      resultado = await Resultado.create(datosResultado);
+      creado = true;
+      console.log('✅ Resultado creado nuevo');
+    } else {
+      // Actualizar registro existente
+      await resultado.update(datosResultado);
+      console.log('✅ Resultado actualizado');
     }
 
-    console.log('✅ [guardarInformeEvento] Guardado con éxito.');
     return res.json({ 
       message: creado ? 'Informe creado correctamente' : 'Informe actualizado correctamente', 
-      informe 
+      informe: resultado 
     });
   } catch (error) {
-    console.error('❌ ERROR CRÍTICO en guardarInformeEvento:', error.message);
-    return res.status(500).json({ message: 'Error interno al guardar', error: error.message });
+    console.error('❌ ERROR en guardarInformeEvento:', error.message);
+    console.error('Stack:', error.stack);
+    return res.status(500).json({ 
+      message: 'Error interno al guardar el informe', 
+      error: error.message 
+    });
   }
 };
 
