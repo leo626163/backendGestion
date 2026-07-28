@@ -1,5 +1,4 @@
-
-const { InformeEvento, Evento, Resultados, Egresos, Ingresos, Presupuesto } = require('../models');
+const { getModels } = require('../models/index.js');
 
 async function esResponsableDelEvento(evento, usuario) {
   if (!usuario) return false;
@@ -11,6 +10,8 @@ async function esResponsableDelEvento(evento, usuario) {
 // GET /eventos/:id/informe
 const getInformeEvento = async (req, res) => {
   try {
+    const { InformeEvento, Evento, Resultados, Egresos, Ingresos, Presupuesto } = getModels();
+
     const idevento = Number(req.params.id);
     if (isNaN(idevento)) {
       return res.status(400).json({ message: 'ID de evento inválido' });
@@ -62,6 +63,8 @@ const getInformeEvento = async (req, res) => {
 // POST /eventos/:id/informe  (upsert)
 const guardarInformeEvento = async (req, res) => {
   try {
+    const { InformeEvento, Evento } = getModels();
+
     const idevento = Number(req.params.id);
     if (isNaN(idevento)) {
       return res.status(400).json({ message: 'ID de evento inválido' });
