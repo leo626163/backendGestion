@@ -43,7 +43,7 @@ router.get('/:id', protect,authorize(['admin','daf']), getUserById);
 router.get('/email/:email', getUserByEmail);
 //router.put('/users/', protect, authorize(['admin']), updateUserRole);
 
-router.put('/:id',protect, authorize(['admin']), updateUser);
+//router.put('/:id',protect, authorize(['admin']), updateUser);
 router.put('/:id',protect, updateUserDaf);
 router.delete('/users/:id', protect, authorize(['admin']), deleteUserByAdmin);
 //router.get('/users/:id',protect,getUserById);
