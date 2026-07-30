@@ -21,7 +21,7 @@ module.exports = (sequelize,DataTypes) => {
       field: 'contrasenia',
     },
     habilitado: {
-      type: DataTypes.STRING,
+      type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
       field: 'habilitado',
