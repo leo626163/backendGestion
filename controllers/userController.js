@@ -260,7 +260,7 @@ const updateUser = asyncHandler(async (req, res) => {
   
   try {
     const { id } = req.params;
-    const { username, nombre, apellidopat, apellidomat, email, role, habilitado, contrasenia, idcarrera, idfacultad } = req.body;
+    const { username, nombre, apellidopat, apellidomat, email, habilitado, contrasenia, idcarrera, idfacultad } = req.body;
 
     console.log('🔥 [updateUser] ID:', id);
     console.log('🔥 [updateUser] idfacultad recibido:', idfacultad);
