@@ -254,6 +254,120 @@ const getUserById1 = asyncHandler(async (req, res) => {
   res.status(200).json(user);
 });
 
+const updateUserDaf = asyncHandler(async (req, res) => {
+  const models = getModels();
+  const { User, Academico, Estudiante } = models;
+  
+  try {
+    const targetUserId = parseInt(req.params.id);
+    const requestingUserId = req.user.idusuario; // ID del usuario que hace la petición (viene del token)
+    const requestingUserRole = req.user.role;    // Rol del usuario que hace la petición
+
+    const { username, nombre, apellidopat, apellidomat, email, habilitado, contrasenia, idcarrera, idfacultad } = req.body;
+
+    console.log('🔥 [updateUser] Solicitante ID:', requestingUserId, 'Rol:', requestingUserRole);
+    console.log('🔥 [updateUser] Target ID:', targetUserId);
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: 'ID de usuario requerido' });
+    }
+
+    // 🔒 VALIDACIÓN DE PERMISOS: Solo Admin o el propio usuario pueden editar
+    if (requestingUserRole !== 'admin' && requestingUserId !== targetUserId) {
+      return res.status(403).json({ 
+        message: "Acceso denegado. No tienes permisos para editar este usuario." 
+      });
+    }
+
+    const user = await User.findByPk(targetUserId);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    // Verificar email duplicado (solo si el email cambió)
+    if (email && email !== user.email) {
+      const existingEmail = await User.findOne({ where: { email } });
+      if (existingEmail) return res.status(409).json({ message: 'El email ya está en uso' });
+    }
+
+    // Actualizar campos básicos
+    if (nombre) user.nombre = nombre;
+    if (apellidopat) user.apellidopat = apellidopat;
+    if (apellidomat !== undefined) user.apellidomat = apellidomat;
+    if (email) user.email = email;
+
+    if (habilitado !== undefined) {
+      let valorHabilitado;
+      if (typeof habilitado === 'string') {
+        valorHabilitado = (habilitado === 'true' || habilitado === '1' || habilitado === 't') ? 'true' : 'false';
+      } else {
+        valorHabilitado = habilitado ? 'true' : 'false';
+      }
+      user.habilitado = valorHabilitado;
+    }
+
+    if (contrasenia && contrasenia.trim() !== '') {
+      user.contrasenia = contrasenia.trim(); // El hook beforeUpdate de Sequelize lo hasheará
+    }
+
+    // ⚠️ SEGURIDAD: Solo un Admin puede cambiar facultad/carrera. 
+    // Si es DAF editando su propio perfil, ignoramos estos campos.
+    if (requestingUserRole === 'admin') {
+      if (user.role === 'academico' && idfacultad) {
+        user.facultad_id = idfacultad;
+      }
+    }
+
+    await user.save();
+    console.log('✅ Usuario guardado correctamente');
+
+    // Actualizar tablas relacionadas (Solo si es Admin y el rol lo requiere)
+    if (requestingUserRole === 'admin') {
+      if (idcarrera && user.role === 'academico') {
+        let academico = await Academico.findOne({ where: { idusuario: targetUserId } });
+        if (academico) {
+          academico.idcarrera = idcarrera;
+          if (academico.facultad_id !== undefined && idfacultad) {
+            academico.facultad_id = idfacultad;
+          }
+          await academico.save();
+        } else {
+          await Academico.create({
+            idusuario: targetUserId,
+            idcarrera: idcarrera,
+            facultad_id: idfacultad || null
+          });
+        }
+      } else if (idcarrera && user.role === 'student') {
+        let estudiante = await Estudiante.findOne({ where: { idusuario: targetUserId } });
+        if (estudiante) {
+          estudiante.idcarrera = idcarrera;
+          await estudiante.save();
+        } else {
+          await Estudiante.create({ idusuario: targetUserId, idcarrera: idcarrera });
+        }
+      }
+    }
+
+    // Respuesta final
+    const updatedUser = await User.findByPk(targetUserId, {
+      attributes: { exclude: ['contrasenia'] }
+    });
+
+    res.status(200).json({
+      message: 'Usuario actualizado correctamente',
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error('❌ Error en updateUser:', error);
+    res.status(500).json({ 
+      message: 'Error al actualizar el usuario', 
+      error: error.message 
+    });
+  }
+});
+
 const updateUser = asyncHandler(async (req, res) => {
   const models = getModels();
   const {User, Academico, Estudiante} = models;
@@ -390,7 +504,6 @@ const updateUser = asyncHandler(async (req, res) => {
     });
   }
 });
-
 const getDirectoresCarrera = asyncHandler(async(req, res) => {
    const models = getModels();
   const {User,Role} = models;
@@ -769,6 +882,7 @@ module.exports = {
   getUserById,
   getUserById1,
   updateUser,
+  updateUserDaf,
   getDirectoresCarrera,
   deleteUserByAdmin,
   getComite,
